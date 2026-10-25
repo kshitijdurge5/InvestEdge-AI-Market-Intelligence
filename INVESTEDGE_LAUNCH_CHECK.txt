@@ -1,0 +1,28 @@
+=== INVESTEDGE LAUNCH CHECK ===
+Workspace: C:\AI Projects\InvestEdge_Packages\InvestEdge_Combined_Workspace
+
+=== CONFIGURATION ===
+UPSTOX_ACCESS_TOKEN configured: True
+AI_API_KEY configured: False
+
+=== BACKEND HEALTH ===
+Backend status: ok
+Environment: development
+Market source: upstox
+Market connection: connected
+Genuine recent live feed: False
+AI configured: False
+
+=== FLUTTER ANALYSIS ===
+No Flutter errors detected by the analysis output.
+
+=== ANDROID RELEASE BUILD ===
+BUILD SUCCEEDED
+Bundle: C:\AI Projects\InvestEdge_Packages\InvestEdge_Combined_Workspace\mobile_app\build\app\outputs\bundle\release\app-release.aab
+Size: 47.86 MB
+
+=== LAUNCH READINESS NOTES ===
+A successful build does not confirm Google Play approval.
+Live market data requires a working provider stream.
+AI features require a valid server-side AI API key.
+Production deployment, signing, privacy disclosures and financial-services compliance must also be verified.

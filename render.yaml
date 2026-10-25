@@ -1,0 +1,33 @@
+﻿services:
+  - type: web
+    name: investedge-api
+    runtime: docker
+    plan: starter
+    region: singapore
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    healthCheckPath: /health
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: USE_SIMULATOR
+        value: "false"
+      - key: DATABASE_URL
+        value: /var/data/investedge.db
+      - key: JWT_SECRET
+        generateValue: true
+      - key: AI_API_KEY
+        sync: false
+      - key: AI_BASE_URL
+        sync: false
+      - key: AI_MODEL
+        sync: false
+      - key: UPSTOX_ACCESS_TOKEN
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false
+    disk:
+      name: investedge-data
+      mountPath: /var/data
+      sizeGB: 1
+

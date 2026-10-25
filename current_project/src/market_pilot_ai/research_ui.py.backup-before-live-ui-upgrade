@@ -1,0 +1,1004 @@
+﻿from fastapi.responses import HTMLResponse
+
+
+def research_page() -> HTMLResponse:
+    return HTMLResponse(
+        """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>InvestEdge — Stock Research</title>
+
+<style>
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: Inter, Segoe UI, Arial, sans-serif;
+    background: #07111f;
+    color: #eef5ff;
+}
+
+button,
+input {
+    font: inherit;
+}
+
+.page {
+    min-height: 100vh;
+    background:
+        radial-gradient(circle at 85% 10%, rgba(34,197,94,.10), transparent 28%),
+        radial-gradient(circle at 10% 30%, rgba(59,130,246,.10), transparent 30%),
+        #07111f;
+}
+
+.topbar {
+    height: 72px;
+    padding: 0 28px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid rgba(255,255,255,.08);
+    background: rgba(7,17,31,.92);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    backdrop-filter: blur(16px);
+}
+
+.brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.logo {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    display: grid;
+    place-items: center;
+    background: linear-gradient(135deg,#22c55e,#16a34a);
+    color: white;
+    font-weight: 900;
+}
+
+.brand-title {
+    font-weight: 800;
+    font-size: 18px;
+}
+
+.brand-sub {
+    font-size: 10px;
+    color: #7f91a8;
+    letter-spacing: 1.5px;
+}
+
+.actions {
+    display: flex;
+    gap: 10px;
+}
+
+.btn {
+    border: 1px solid rgba(255,255,255,.10);
+    background: #101d2f;
+    color: #eaf2ff;
+    padding: 10px 16px;
+    border-radius: 10px;
+    cursor: pointer;
+}
+
+.btn:hover {
+    background: #17283e;
+}
+
+.container {
+    max-width: 1280px;
+    margin: auto;
+    padding: 28px;
+}
+
+.search-box {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 24px;
+}
+
+.search-box input {
+    flex: 1;
+    min-width: 0;
+    background: #0d1a2b;
+    border: 1px solid rgba(255,255,255,.10);
+    color: white;
+    padding: 15px 18px;
+    border-radius: 12px;
+    outline: none;
+}
+
+.search-box input:focus {
+    border-color: #22c55e;
+}
+
+.search-btn {
+    background: #22c55e;
+    color: #04110a;
+    border: 0;
+    padding: 0 24px;
+    border-radius: 12px;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.hero-card {
+    background: linear-gradient(135deg,#102238,#0b1728);
+    border: 1px solid rgba(255,255,255,.08);
+    border-radius: 20px;
+    padding: 26px;
+    margin-bottom: 18px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.20);
+}
+
+.stock-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 20px;
+}
+
+.stock-name {
+    font-size: 27px;
+    font-weight: 850;
+}
+
+.stock-symbol {
+    color: #8da0b8;
+    margin-top: 4px;
+}
+
+.price {
+    font-size: 32px;
+    font-weight: 850;
+    margin-top: 15px;
+}
+
+.change {
+    margin-left: 10px;
+    font-size: 15px;
+}
+
+.positive {
+    color: #4ade80;
+}
+
+.negative {
+    color: #fb7185;
+}
+
+.neutral {
+    color: #fbbf24;
+}
+
+.signal {
+    min-width: 170px;
+    text-align: center;
+    padding: 18px;
+    border-radius: 16px;
+    background: rgba(251,191,36,.10);
+    border: 1px solid rgba(251,191,36,.25);
+}
+
+.signal-label {
+    font-size: 12px;
+    color: #9eafc5;
+    letter-spacing: 1px;
+}
+
+.signal-value {
+    font-size: 30px;
+    font-weight: 900;
+    margin-top: 4px;
+    color: #fbbf24;
+}
+
+.score {
+    margin-top: 6px;
+    color: #a9bad0;
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(5,1fr);
+    gap: 14px;
+    margin-bottom: 18px;
+}
+
+.card {
+    background: #0c192a;
+    border: 1px solid rgba(255,255,255,.07);
+    border-radius: 16px;
+    padding: 18px;
+}
+
+.card-title {
+    color: #8ea1b8;
+    font-size: 12px;
+    margin-bottom: 10px;
+}
+
+.card-value {
+    font-size: 22px;
+    font-weight: 800;
+}
+
+.card-small {
+    margin-top: 5px;
+    font-size: 12px;
+    color: #7f91a8;
+}
+
+.section-grid {
+    display: grid;
+    grid-template-columns: 1.15fr .85fr;
+    gap: 18px;
+    margin-bottom: 18px;
+}
+
+.panel {
+    background: #0c192a;
+    border: 1px solid rgba(255,255,255,.07);
+    border-radius: 18px;
+    padding: 22px;
+}
+
+.panel h2 {
+    margin: 0 0 18px;
+    font-size: 17px;
+}
+
+.signal-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 13px 0;
+    border-bottom: 1px solid rgba(255,255,255,.06);
+}
+
+.signal-row:last-child {
+    border-bottom: 0;
+}
+
+.badge {
+    padding: 6px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 800;
+}
+
+.badge.green {
+    color: #4ade80;
+    background: rgba(34,197,94,.12);
+}
+
+.badge.red {
+    color: #fb7185;
+    background: rgba(244,63,94,.12);
+}
+
+.badge.yellow {
+    color: #fbbf24;
+    background: rgba(251,191,36,.12);
+}
+
+.metric-grid {
+    display: grid;
+    grid-template-columns: repeat(2,1fr);
+    gap: 12px;
+}
+
+.metric {
+    background: #101f33;
+    padding: 14px;
+    border-radius: 12px;
+}
+
+.metric span {
+    display: block;
+    color: #8295ad;
+    font-size: 11px;
+    margin-bottom: 6px;
+}
+
+.metric strong {
+    font-size: 17px;
+}
+
+.chart-panel {
+    margin-bottom: 18px;
+}
+
+#chart {
+    width: 100%;
+    height: 300px;
+    display: block;
+    background: #091525;
+    border-radius: 14px;
+}
+
+.ai {
+    line-height: 1.7;
+    color: #b9c7d8;
+    background: linear-gradient(135deg,#0d2035,#0b1728);
+}
+
+.ai strong {
+    color: white;
+}
+
+.news-item {
+    padding: 13px 0;
+    border-bottom: 1px solid rgba(255,255,255,.06);
+}
+
+.news-item:last-child {
+    border-bottom: 0;
+}
+
+.news-title {
+    font-weight: 700;
+}
+
+.news-meta {
+    font-size: 11px;
+    color: #7f91a8;
+    margin-top: 5px;
+}
+
+.loading,
+.error {
+    text-align: center;
+    padding: 60px 20px;
+    color: #91a4bb;
+}
+
+.error {
+    color: #fb7185;
+}
+
+.disclaimer {
+    margin-top: 18px;
+    padding: 14px;
+    border-radius: 12px;
+    background: rgba(251,191,36,.07);
+    border: 1px solid rgba(251,191,36,.15);
+    color: #c4b27c;
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+@media (max-width: 900px) {
+    .grid {
+        grid-template-columns: repeat(2,1fr);
+    }
+
+    .section-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 600px) {
+    .topbar {
+        padding: 0 14px;
+    }
+
+    .container {
+        padding: 16px;
+    }
+
+    .brand-sub {
+        display: none;
+    }
+
+    .stock-head {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .signal {
+        width: 100%;
+    }
+
+    .grid {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .search-btn {
+        padding: 0 15px;
+    }
+
+    .price {
+        font-size: 27px;
+    }
+}
+</style>
+</head>
+
+<body>
+<div class="page">
+
+<header class="topbar">
+    <div class="brand">
+        <div class="logo">IE</div>
+        <div>
+            <div class="brand-title">InvestEdge</div>
+            <div class="brand-sub">AI MARKET INTELLIGENCE</div>
+        </div>
+    </div>
+
+    <div class="actions">
+        <button class="btn" onclick="goDashboard()">← Dashboard</button>
+    </div>
+</header>
+
+<main class="container">
+
+    <div class="search-box">
+        <input
+            id="symbolInput"
+            placeholder="Search stock symbol — RELIANCE, TCS, INFY..."
+            onkeydown="if(event.key==='Enter') loadResearch()"
+        >
+        <button class="search-btn" onclick="loadResearch()">Analyse</button>
+    </div>
+
+    <div id="content">
+        <div class="loading">Loading stock research...</div>
+    </div>
+
+</main>
+</div>
+
+<script>
+
+const params = new URLSearchParams(window.location.search);
+let symbol = (params.get("symbol") || "RELIANCE").toUpperCase();
+
+document.getElementById("symbolInput").value = symbol;
+
+function goDashboard() {
+    window.location.href = "/dashboard";
+}
+
+function esc(value) {
+    return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+}
+
+function number(value, decimals = 2) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return "—";
+    return n.toLocaleString("en-IN", {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals
+    });
+}
+
+function signalClass(value) {
+    const text = String(value || "").toLowerCase();
+
+    if (
+        text.includes("positive") ||
+        text.includes("bullish") ||
+        text.includes("buy")
+    ) return "green";
+
+    if (
+        text.includes("negative") ||
+        text.includes("bearish") ||
+        text.includes("sell")
+    ) return "red";
+
+    return "yellow";
+}
+
+function recommendation(score, unified) {
+
+    const s = Number(score || 0);
+    const signal = String(unified || "").toLowerCase();
+
+    if (s >= 75 && signal.includes("positive")) {
+        return ["BUY", "green"];
+    }
+
+    if (s <= 40 && signal.includes("negative")) {
+        return ["SELL", "red"];
+    }
+
+    return ["HOLD", "yellow"];
+}
+
+function renderChart(history) {
+
+    const svg = document.getElementById("chart");
+
+    if (!history || history.length < 2) {
+        svg.innerHTML =
+            '<text x="50%" y="50%" text-anchor="middle" fill="#71839a">Historical chart unavailable</text>';
+        return;
+    }
+
+    const closes = history
+        .map(x => Number(x.close))
+        .filter(Number.isFinite);
+
+    if (closes.length < 2) {
+        svg.innerHTML =
+            '<text x="50%" y="50%" text-anchor="middle" fill="#71839a">Historical chart unavailable</text>';
+        return;
+    }
+
+    const width = 1000;
+    const height = 300;
+    const pad = 30;
+
+    const min = Math.min(...closes);
+    const max = Math.max(...closes);
+    const range = Math.max(max - min, 1);
+
+    const points = closes.map((price, index) => {
+
+        const x =
+            pad +
+            (index / (closes.length - 1)) *
+            (width - pad * 2);
+
+        const y =
+            height -
+            pad -
+            ((price - min) / range) *
+            (height - pad * 2);
+
+        return `${x},${y}`;
+    }).join(" ");
+
+    svg.innerHTML = `
+        <polyline
+            points="${points}"
+            fill="none"
+            stroke="#22c55e"
+            stroke-width="4"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+        />
+
+        <text x="${pad}" y="24"
+              fill="#7f91a8"
+              font-size="12">
+            ₹${number(max)}
+        </text>
+
+        <text x="${pad}" y="${height - 8}"
+              fill="#7f91a8"
+              font-size="12">
+            ₹${number(min)}
+        </text>
+    `;
+}
+
+function render(data) {
+
+    if (data.error) {
+        document.getElementById("content").innerHTML =
+            `<div class="error">${esc(data.error)}</div>`;
+        return;
+    }
+    const market = data.market_data || {};
+    const marketAnalysis = data.market_analysis || {};
+    const technical = data.technical_analysis || {};
+    const fundamentals = data.fundamentals || {};
+    const risk = data.risk_analysis || {};
+    const sentiment = data.news_sentiment || {};
+
+    const reconciliation =
+        data.signal_reconciliation ||
+        marketAnalysis.signal_reconciliation ||
+        {};
+
+    const marketSignal =
+        marketAnalysis.market_signal ||
+        reconciliation.market_signal ||
+        "—";
+
+    const technicalSignal =
+        marketAnalysis.technical_signal ||
+        reconciliation.technical_signal ||
+        technical.trend ||
+        "—";
+
+    const unifiedSignal =
+        data.unified_signal ||
+        marketAnalysis.unified_signal ||
+        reconciliation.unified_signal ||
+        "—";
+    const breakdown = data.score_breakdown || {};
+    const news = data.news || [];
+
+    const score = Number(data.score || 0);
+    const aiScore = Number(data.ai_score || 0);
+
+    const [rec, recClass] =
+        recommendation(score, unifiedSignal);
+
+    document.getElementById("content").innerHTML = `
+
+        <section class="hero-card">
+
+            <div class="stock-head">
+
+                <div>
+                    <div class="stock-name">
+                        ${esc(fundamentals.company_name || data.symbol)}
+                    </div>
+
+                    <div class="stock-symbol">
+                        NSE • ${esc(data.symbol)}
+                        • ${esc(fundamentals.sector || "Equity")}
+                    </div>
+
+                    <div class="price">
+                        ₹${number(market.price)}
+
+                        <span class="change ${
+                            Number(market.change_percent) >= 0
+                                ? "positive"
+                                : "negative"
+                        }">
+                            ${
+                                Number(market.change_percent) >= 0
+                                    ? "▲"
+                                    : "▼"
+                            }
+                            ${number(market.change_percent)}%
+                        </span>
+                    </div>
+                </div>
+
+                <div class="signal">
+                    <div class="signal-label">INVESTEDGE SIGNAL</div>
+                    <div class="signal-value"
+                         style="color:${
+                             recClass === "green"
+                                ? "#4ade80"
+                                : recClass === "red"
+                                    ? "#fb7185"
+                                    : "#fbbf24"
+                         }">
+                        ${rec}
+                    </div>
+                    <div class="score">
+                        Research Score: <strong>${number(score)}</strong>
+                    </div>
+                    <div class="score">
+                        AI Score: <strong>${number(aiScore)}</strong>
+                    </div>
+                </div>
+
+            </div>
+
+        </section>
+
+        <section class="grid">
+
+            <div class="card">
+                <div class="card-title">MARKET SIGNAL</div>
+                <div class="card-value">
+                    ${esc(marketSignal)}
+                </div>
+                <div class="card-small">
+                    Momentum ${number(marketAnalysis.momentum_score,0)}
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">TECHNICAL</div>
+                <div class="card-value">
+                    ${esc(technicalSignal)}
+                </div>
+                <div class="card-small">
+                    RSI ${number(technical.rsi_14,1)}
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">FUNDAMENTALS</div>
+                <div class="card-value">
+                    ${number(breakdown.fundamental?.score)}
+                </div>
+                <div class="card-small">
+                    P/E ${number(fundamentals.pe)}
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">RISK</div>
+                <div class="card-value">
+                    ${esc(risk.risk_level || "—")}
+                </div>
+                <div class="card-small">
+                    Risk score ${number(risk.risk_score,0)}
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">SENTIMENT</div>
+                <div class="card-value">
+                    ${esc(sentiment.sentiment || "—")}
+                </div>
+                <div class="card-small">
+                    ${number(sentiment.articles_analyzed,0)} articles
+                </div>
+            </div>
+
+        </section>
+
+        <section class="section-grid">
+
+            <div class="panel">
+                <h2>Signal Intelligence</h2>
+
+                <div class="signal-row">
+                    <span>Market Direction</span>
+                    <span class="badge ${signalClass(marketSignal)}">
+                        ${esc(marketSignal)}
+                    </span>
+                </div>
+
+                <div class="signal-row">
+                    <span>Technical Direction</span>
+                    <span class="badge ${signalClass(marketAnalysis.technical_signal)}">
+                        ${esc(technicalSignal)}
+                    </span>
+                </div>
+
+                <div class="signal-row">
+                    <span>Unified Signal</span>
+                    <span class="badge ${signalClass(unifiedSignal)}">
+                        ${esc(unifiedSignal)}
+                    </span>
+                </div>
+
+                <div class="signal-row">
+                    <span>Signal Consistency</span>
+                    <span class="badge ${signalClass(
+                        data.signal_reconciliation?.signal_consistency
+                    )}">
+                        ${esc(
+                            data.signal_reconciliation?.signal_consistency || "—"
+                        )}
+                    </span>
+                </div>
+
+            </div>
+
+            <div class="panel">
+                <h2>Technical Indicators</h2>
+
+                <div class="metric-grid">
+
+                    <div class="metric">
+                        <span>RSI 14</span>
+                        <strong>${number(technical.rsi_14,1)}</strong>
+                    </div>
+
+                    <div class="metric">
+                        <span>SMA 20</span>
+                        <strong>₹${number(technical.sma_20)}</strong>
+                    </div>
+
+                    <div class="metric">
+                        <span>EMA 20</span>
+                        <strong>₹${number(technical.ema_20)}</strong>
+                    </div>
+
+                    <div class="metric">
+                        <span>Volatility</span>
+                        <strong>${number(technical.volatility)}%</strong>
+                    </div>
+
+                </div>
+            </div>
+
+        </section>
+
+        <section class="panel chart-panel">
+            <h2>Historical Price</h2>
+            <svg id="chart"
+                 viewBox="0 0 1000 300"
+                 preserveAspectRatio="none"></svg>
+        </section>
+
+        <section class="section-grid">
+
+            <div class="panel">
+                <h2>Fundamental Snapshot</h2>
+
+                <div class="metric-grid">
+
+                    <div class="metric">
+                        <span>P/E</span>
+                        <strong>${number(fundamentals.pe)}</strong>
+                    </div>
+
+                    <div class="metric">
+                        <span>P/B</span>
+                        <strong>${number(fundamentals.pb)}</strong>
+                    </div>
+
+                    <div class="metric">
+                        <span>ROE</span>
+                        <strong>${number(fundamentals.roe)}%</strong>
+                    </div>
+
+                    <div class="metric">
+                        <span>ROCE</span>
+                        <strong>${number(fundamentals.roce)}%</strong>
+                    </div>
+
+                    <div class="metric">
+                        <span>ROA</span>
+                        <strong>${number(fundamentals.roa)}%</strong>
+                    </div>
+
+                    <div class="metric">
+                        <span>EV / EBITDA</span>
+                        <strong>${number(fundamentals.ev_ebitda)}</strong>
+                    </div>
+
+                </div>
+            </div>
+
+            <div class="panel">
+                <h2>Score Breakdown</h2>
+
+                <div class="signal-row">
+                    <span>Market</span>
+                    <strong>${number(breakdown.market?.score)}</strong>
+                </div>
+
+                <div class="signal-row">
+                    <span>Technical</span>
+                    <strong>${number(breakdown.technical?.score)}</strong>
+                </div>
+
+                <div class="signal-row">
+                    <span>Fundamental</span>
+                    <strong>${number(breakdown.fundamental?.score)}</strong>
+                </div>
+
+                <div class="signal-row">
+                    <span>Risk</span>
+                    <strong>${number(breakdown.risk?.score)}</strong>
+                </div>
+
+                <div class="signal-row">
+                    <span>News</span>
+                    <strong>${number(breakdown.news?.score)}</strong>
+                </div>
+
+            </div>
+
+        </section>
+
+        <section class="panel ai">
+            <h2>✦ AI Research Insight</h2>
+            <div>
+                ${
+                    esc(
+                        data.ai_reasoning ||
+                        "AI reasoning is not available."
+                    )
+                }
+            </div>
+        </section>
+
+        <section class="panel" style="margin-top:18px;">
+            <h2>Market News</h2>
+
+            ${
+                news.length
+                    ? news.map(item => `
+                        <div class="news-item">
+                            <div class="news-title">
+                                ${esc(item.headline)}
+                            </div>
+                            <div class="news-meta">
+                                ${esc(item.published_time || "")}
+                                ${
+                                    item.summary
+                                        ? " • " + esc(item.summary)
+                                        : ""
+                                }
+                            </div>
+                        </div>
+                    `).join("")
+                    : '<div class="card-small">No news available.</div>'
+            }
+
+        </section>
+
+        <div class="disclaimer">
+            <strong>Data status:</strong>
+            This environment is currently using mock/synthetic market,
+            historical and news data. BUY/HOLD/SELL is a research signal,
+            not personalized financial advice. Live market data will be
+            connected through the configured market-data provider later.
+        </div>
+    `;
+
+    renderChart(data.historical_data || []);
+}
+
+async function loadResearch() {
+
+    const input =
+        document.getElementById("symbolInput");
+
+    const value =
+        input.value.trim().toUpperCase();
+
+    if (!value) {
+        return;
+    }
+
+    symbol = value;
+
+    document.getElementById("content").innerHTML =
+        '<div class="loading">Analysing ' +
+        esc(symbol) +
+        '...</div>';
+
+    history.replaceState(
+        null,
+        "",
+        "/research-ui?symbol=" +
+        encodeURIComponent(symbol)
+    );
+
+    try {
+
+        const response =
+            await fetch(
+                "/research?symbol=" +
+                encodeURIComponent(symbol)
+            );
+
+        const data =
+            await response.json();
+
+        render(data);
+
+    } catch (error) {
+
+        document.getElementById("content").innerHTML =
+            '<div class="error">' +
+            'Unable to load research. Make sure the server is running.' +
+            '</div>';
+    }
+}
+
+loadResearch();
+
+</script>
+</body>
+</html>
+"""
+    )
+
+

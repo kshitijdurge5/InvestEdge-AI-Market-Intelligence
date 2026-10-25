@@ -1,0 +1,11 @@
+{
+  "project": "InvestEdge",
+  "upgrade": "Upstox V3 live market streaming",
+  "token_included": false,
+  "files": [
+    "README_FIRST.txt",
+    "backend/src/market_stream.py",
+    "backend/src/run_market_stream_test.py",
+    "backend/src/RUN_LIVE_STREAM_TEST.bat"
+  ]
+}

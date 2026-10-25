@@ -1,0 +1,2068 @@
+import 'dart:convert';
+import 'dart:async';
+
+import 'dart:html' as html;
+
+import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+
+void main() {
+  runApp(const InvestEdgeApp());
+}
+
+// ============================================================
+// APP THEME
+// ============================================================
+
+const Color primaryGreen = Color(0xFF183B35);
+const Color green = Color(0xFF16835A);
+const Color lightGreen = Color(0xFFEAF1ED);
+const Color red = Color(0xFFC94C4C);
+const Color lightRed = Color(0xFFF9E9E7);
+const Color orange = Color(0xFFD58A24);
+const Color blue = Color(0xFF3977C7);
+const Color background = Color(0xFFF7F5EF);
+const Color white = Colors.white;
+const Color borderColor = Color(0xFFE5E1D8);
+const Color greyText = Color(0xFF77746C);
+const Color darkText = Color(0xFF202522);
+
+// ============================================================
+// APP
+// ============================================================
+
+class InvestEdgeApp extends StatelessWidget {
+  const InvestEdgeApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'InvestEdge',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        useMaterial3: true,
+        scaffoldBackgroundColor: background,
+        colorScheme: ColorScheme.fromSeed(seedColor: primaryGreen),
+        fontFamily: 'Arial',
+      ),
+      home: const MainShell(),
+    );
+  }
+}
+
+// ============================================================
+// MAIN SHELL
+// ============================================================
+
+class MainShell extends StatefulWidget {
+  const MainShell({super.key});
+
+  @override
+  State<MainShell> createState() => _MainShellState();
+}
+
+class _MainShellState extends State<MainShell> {
+  int selectedIndex = 0;
+
+  final List<Widget> pages = const [
+    HomeScreen(),
+    ResearchScreen(),
+    PortfolioScreen(),
+    AccountScreen(),
+  ];
+
+  final List<String> titles = const [
+    'Dashboard',
+    'AI Research',
+    'Portfolio',
+    'Account',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: background,
+        elevation: 0,
+        surfaceTintColor: Colors.transparent,
+        titleSpacing: 20,
+        title: Row(
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: primaryGreen,
+                borderRadius: BorderRadius.circular(11),
+              ),
+              alignment: Alignment.center,
+              child: const Text(
+                'IE',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 15,
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            const Text(
+              'InvestEdge',
+              style: TextStyle(
+                color: primaryGreen,
+                fontWeight: FontWeight.w800,
+                fontSize: 21,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          Container(
+            margin: const EdgeInsets.only(right: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+            decoration: BoxDecoration(
+              color: lightGreen,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: const Row(
+              children: [
+                Icon(Icons.circle, size: 9, color: green),
+                SizedBox(width: 6),
+                Text(
+                  'LIVE',
+                  style: TextStyle(
+                    color: green,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+      body: pages[selectedIndex],
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: selectedIndex,
+        backgroundColor: Colors.white,
+        indicatorColor: lightGreen,
+        onDestinationSelected: (index) {
+          setState(() {
+            selectedIndex = index;
+          });
+        },
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.dashboard_outlined),
+            selectedIcon: Icon(Icons.dashboard),
+            label: 'Home',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.auto_graph_outlined),
+            selectedIcon: Icon(Icons.auto_graph),
+            label: 'Research',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.pie_chart_outline),
+            selectedIcon: Icon(Icons.pie_chart),
+            label: 'Portfolio',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.person_outline),
+            selectedIcon: Icon(Icons.person),
+            label: 'Account',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================================
+// API SERVICE
+// ============================================================
+
+class InvestEdgeApi {
+  static const String baseUrl = 'http://127.0.0.1:8010';
+
+  static Future<Map<String, dynamic>> analyse(String symbol) async {
+    final cleanSymbol = symbol.trim().toUpperCase();
+
+    final uri = Uri.parse('$baseUrl/api/market/analyse/$cleanSymbol');
+
+    final response = await http.get(uri).timeout(const Duration(seconds: 30));
+
+    if (response.statusCode != 200) {
+      try {
+        final error = jsonDecode(response.body);
+
+        throw Exception(
+          error['detail']?.toString() ?? 'Market analysis failed.',
+        );
+      } catch (_) {
+        throw Exception('Market analysis failed (${response.statusCode}).');
+      }
+    }
+
+    final decoded = jsonDecode(response.body);
+
+    if (decoded is! Map<String, dynamic>) {
+      throw Exception('Invalid response received from InvestEdge backend.');
+    }
+
+    return decoded;
+  }
+
+  static Future<Map<String, dynamic>> quote(String symbol) async {
+    final cleanSymbol = symbol.trim().toUpperCase();
+
+    final uri = Uri.parse('$baseUrl/api/market/quote/$cleanSymbol');
+
+    final response = await http.get(uri).timeout(const Duration(seconds: 30));
+
+    if (response.statusCode != 200) {
+      throw Exception('Unable to load live quote.');
+    }
+
+    final decoded = jsonDecode(response.body);
+
+    if (decoded is! Map<String, dynamic>) {
+      throw Exception('Invalid quote response.');
+    }
+
+    return decoded;
+  }
+}
+
+// ============================================================
+// ANALYSIS MODEL
+// ============================================================
+
+class StockAnalysis {
+  final String symbol;
+  final String company;
+  final String exchange;
+  final String marketData;
+  final String provider;
+  final String providerVersion;
+
+  final double price;
+  final double previousClose;
+  final double change;
+  final double changePercent;
+
+  final String recommendation;
+  final String trend;
+
+  final double confidence;
+  final double overallScore;
+  final double technical;
+  final double fundamental;
+  final double momentum;
+  final double risk;
+
+  final double? rsi;
+  final double? sma20;
+  final double? sma50;
+
+  final int candles;
+  final String timeframe;
+
+  final double entryLow;
+  final double entryHigh;
+
+  final double target;
+  final double target2;
+  final double stopLoss;
+
+  final String insight;
+  final String lastUpdated;
+
+  StockAnalysis({
+    required this.symbol,
+    required this.company,
+    required this.exchange,
+    required this.marketData,
+    required this.provider,
+    required this.providerVersion,
+    required this.price,
+    required this.previousClose,
+    required this.change,
+    required this.changePercent,
+    required this.recommendation,
+    required this.trend,
+    required this.confidence,
+    required this.overallScore,
+    required this.technical,
+    required this.fundamental,
+    required this.momentum,
+    required this.risk,
+    required this.rsi,
+    required this.sma20,
+    required this.sma50,
+    required this.candles,
+    required this.timeframe,
+    required this.entryLow,
+    required this.entryHigh,
+    required this.target,
+    required this.target2,
+    required this.stopLoss,
+    required this.insight,
+    required this.lastUpdated,
+  });
+
+  factory StockAnalysis.fromJson(Map<String, dynamic> json) {
+    final indicators = json['indicators'] is Map
+        ? Map<String, dynamic>.from(json['indicators'])
+        : <String, dynamic>{};
+
+    final entry = json['entry_zone'] is Map
+        ? Map<String, dynamic>.from(json['entry_zone'])
+        : <String, dynamic>{};
+
+    double number(dynamic value) {
+      if (value is num) {
+        return value.toDouble();
+      }
+
+      return double.tryParse(value?.toString() ?? '') ?? 0;
+    }
+
+    double? nullableNumber(dynamic value) {
+      if (value == null) {
+        return null;
+      }
+
+      if (value is num) {
+        return value.toDouble();
+      }
+
+      return double.tryParse(value.toString());
+    }
+
+    return StockAnalysis(
+      symbol: json['symbol']?.toString() ?? '',
+      company: json['company']?.toString() ?? '',
+      exchange: json['exchange']?.toString() ?? 'NSE',
+      marketData: json['market_data']?.toString() ?? '',
+      provider: json['provider']?.toString() ?? '',
+      providerVersion: json['provider_version']?.toString() ?? '',
+
+      price: number(json['price']),
+      previousClose: number(json['previous_close']),
+      change: number(json['change']),
+      changePercent: number(json['change_percent']),
+
+      recommendation: json['recommendation']?.toString() ?? 'HOLD',
+
+      trend: json['trend']?.toString() ?? 'Neutral',
+
+      confidence: number(json['confidence']),
+
+      overallScore: number(json['overall_score']),
+
+      technical: number(json['technical']),
+
+      fundamental: number(json['fundamental']),
+
+      momentum: number(json['momentum']),
+
+      risk: number(json['risk']),
+
+      rsi: nullableNumber(indicators['rsi']),
+
+      sma20: nullableNumber(indicators['sma20']),
+
+      sma50: nullableNumber(indicators['sma50']),
+
+      candles: int.tryParse(indicators['candles']?.toString() ?? '') ?? 0,
+
+      timeframe: indicators['timeframe']?.toString() ?? '5-minute',
+
+      entryLow: number(entry['low']),
+
+      entryHigh: number(entry['high']),
+
+      target: number(json['target']),
+
+      target2: number(json['target_2']),
+
+      stopLoss: number(json['stop_loss']),
+
+      insight:
+          json['ai_market_insight']?.toString() ??
+          json['summary']?.toString() ??
+          '',
+
+      lastUpdated: json['last_updated']?.toString() ?? '',
+    );
+  }
+}
+
+// ============================================================
+// LIVE MARKET STREAM
+// ============================================================
+//
+// Browser/Chrome build: connects to the existing InvestEdge
+// WebSocket service on port 8011. The service is intentionally
+// separate from the analysis API on port 8010.
+//
+// Expected message examples supported:
+// {"symbol":"RELIANCE","price":1207.7,"change_percent":-0.85}
+// {"data":{"symbol":"RELIANCE","price":1207.7,...}}
+// {"RELIANCE":{"price":1207.7,...}}
+//
+class LiveMarketStream {
+  LiveMarketStream({required this.onQuote, required this.onStatus});
+
+  final void Function(Map<String, dynamic> quote) onQuote;
+  final void Function(bool connected) onStatus;
+
+  html.WebSocket? _socket;
+  Timer? _reconnectTimer;
+  bool _disposed = false;
+  int _attempt = 0;
+
+  static const String url = 'ws://127.0.0.1:8011/ws';
+
+  void start() {
+    _disposed = false;
+    _connect();
+  }
+
+  void _connect() {
+    if (_disposed) return;
+
+    try {
+      _socket?.close();
+    } catch (_) {}
+
+    try {
+      final socket = html.WebSocket(url);
+      _socket = socket;
+
+      socket.onOpen.listen((_) {
+        _attempt = 0;
+        onStatus(true);
+
+        // The backend already manages the Upstox subscription.
+        // This message is harmless if the server does not need it.
+        try {
+          socket.send(
+            jsonEncode({
+              'action': 'subscribe',
+              'symbols': ['RELIANCE', 'TCS'],
+              'mode': 'ltpc',
+            }),
+          );
+        } catch (_) {}
+      });
+
+      socket.onMessage.listen((event) {
+        final raw = event.data?.toString();
+        if (raw == null || raw.isEmpty) return;
+
+        try {
+          final decoded = jsonDecode(raw);
+          _extractQuotes(decoded);
+        } catch (_) {
+          // Ignore non-JSON heartbeat/debug messages.
+        }
+      });
+
+      socket.onClose.listen((_) {
+        onStatus(false);
+        _scheduleReconnect();
+      });
+
+      socket.onError.listen((_) {
+        onStatus(false);
+      });
+    } catch (_) {
+      onStatus(false);
+      _scheduleReconnect();
+    }
+  }
+
+  void _extractQuotes(dynamic value) {
+    if (value is Map) {
+      final map = Map<String, dynamic>.from(value);
+
+      final symbol = _firstString(map, const [
+        'symbol',
+        'trading_symbol',
+        'instrument',
+      ]);
+
+      final price = _firstNumber(map, const [
+        'price',
+        'ltp',
+        'last_price',
+        'last_traded_price',
+      ]);
+
+      if (symbol != null && price != null) {
+        final quote = <String, dynamic>{
+          ...map,
+          'symbol': symbol.toUpperCase(),
+          'price': price,
+        };
+
+        final changePercent = _firstNumber(map, const [
+          'change_percent',
+          'changePct',
+          'percent_change',
+        ]);
+
+        if (changePercent != null) {
+          quote['change_percent'] = changePercent;
+        }
+
+        onQuote(quote);
+        return;
+      }
+
+      for (final entry in map.entries) {
+        if (entry.value is Map) {
+          final nested = Map<String, dynamic>.from(entry.value as Map);
+
+          final nestedPrice = _firstNumber(nested, const [
+            'price',
+            'ltp',
+            'last_price',
+            'last_traded_price',
+          ]);
+
+          if (nestedPrice != null) {
+            final nestedSymbol = _firstString(nested, const [
+              'symbol',
+              'trading_symbol',
+            ]);
+
+            onQuote({
+              ...nested,
+              'symbol': (nestedSymbol ?? entry.key).toUpperCase(),
+              'price': nestedPrice,
+            });
+          }
+        }
+      }
+
+      // Some stream servers wrap updates in "data".
+      if (map['data'] != null) {
+        _extractQuotes(map['data']);
+      }
+      return;
+    }
+
+    if (value is List) {
+      for (final item in value) {
+        _extractQuotes(item);
+      }
+    }
+  }
+
+  String? _firstString(Map<String, dynamic> map, List<String> keys) {
+    for (final key in keys) {
+      final value = map[key];
+      if (value != null && value.toString().trim().isNotEmpty) {
+        return value.toString().trim();
+      }
+    }
+    return null;
+  }
+
+  double? _firstNumber(Map<String, dynamic> map, List<String> keys) {
+    for (final key in keys) {
+      final value = map[key];
+      if (value is num) return value.toDouble();
+
+      final parsed = double.tryParse(value?.toString() ?? '');
+      if (parsed != null) return parsed;
+    }
+    return null;
+  }
+
+  void _scheduleReconnect() {
+    if (_disposed || _reconnectTimer?.isActive == true) {
+      return;
+    }
+
+    _attempt = (_attempt + 1).clamp(1, 10);
+
+    final seconds = _attempt <= 3 ? 2 : 5;
+
+    _reconnectTimer = Timer(Duration(seconds: seconds), _connect);
+  }
+
+  void dispose() {
+    _disposed = true;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    onStatus(false);
+
+    try {
+      _socket?.close();
+    } catch (_) {}
+
+    _socket = null;
+  }
+}
+
+// ============================================================
+// HOME
+// ============================================================
+
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  bool loading = true;
+
+  Map<String, dynamic>? reliance;
+  Map<String, dynamic>? tcs;
+
+  late final LiveMarketStream liveStream;
+  bool liveConnected = false;
+
+  @override
+  void initState() {
+    super.initState();
+
+    liveStream = LiveMarketStream(
+      onQuote: _applyLiveQuote,
+      onStatus: (connected) {
+        if (!mounted) return;
+        setState(() {
+          liveConnected = connected;
+        });
+      },
+    );
+
+    liveStream.start();
+    loadMarket();
+  }
+
+  @override
+  void dispose() {
+    liveStream.dispose();
+    super.dispose();
+  }
+
+  void _applyLiveQuote(Map<String, dynamic> quote) {
+    if (!mounted) return;
+
+    final symbol = quote['symbol']?.toString().toUpperCase();
+
+    if (symbol == null) return;
+
+    setState(() {
+      if (symbol == 'RELIANCE') {
+        reliance = {...(reliance ?? {}), ...quote, 'symbol': 'RELIANCE'};
+      } else if (symbol == 'TCS') {
+        tcs = {...(tcs ?? {}), ...quote, 'symbol': 'TCS'};
+      }
+    });
+  }
+
+  Future<void> loadMarket() async {
+    setState(() {
+      loading = true;
+    });
+
+    try {
+      final results = await Future.wait([
+        InvestEdgeApi.quote('RELIANCE'),
+        InvestEdgeApi.quote('TCS'),
+      ]);
+
+      if (!mounted) return;
+
+      setState(() {
+        reliance = results[0];
+        tcs = results[1];
+        loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+
+      setState(() {
+        loading = false;
+      });
+    }
+  }
+
+  String price(dynamic value) {
+    if (value == null) return '--';
+
+    final number = double.tryParse(value.toString());
+
+    if (number == null) return '--';
+
+    return '₹${number.toStringAsFixed(2)}';
+  }
+
+  String change(dynamic value) {
+    if (value == null) return '--';
+
+    final number = double.tryParse(value.toString());
+
+    if (number == null) return '--';
+
+    return '${number >= 0 ? '+' : ''}${number.toStringAsFixed(2)}%';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return RefreshIndicator(
+      onRefresh: loadMarket,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(18, 8, 18, 30),
+        children: [
+          _hero(),
+          const SizedBox(height: 18),
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Live Market',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+                decoration: BoxDecoration(
+                  color: liveConnected ? lightGreen : const Color(0xFFF3EFE5),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.circle,
+                      size: 8,
+                      color: liveConnected ? green : orange,
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      liveConnected ? 'STREAMING' : 'CONNECTING',
+                      style: TextStyle(
+                        color: liveConnected ? green : orange,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(child: _marketCard(reliance, 'RELIANCE')),
+              const SizedBox(width: 12),
+              Expanded(child: _marketCard(tcs, 'TCS')),
+            ],
+          ),
+          const SizedBox(height: 18),
+          _featureCard(
+            icon: Icons.auto_graph,
+            title: 'AI Market Research',
+            subtitle: 'Analyse stocks with live NSE data, technical indicators and InvestEdge signals.',
+            color: lightGreen,
+          ),
+          const SizedBox(height: 12),
+          _featureCard(
+            icon: Icons.shield_outlined,
+            title: 'Risk Intelligence',
+            subtitle: 'Understand momentum, calculated risk, entry zones, targets and stop loss.',
+            color: const Color(0xFFF5EFE1),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _hero() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFFEAF1ED), Color(0xFFF4EFE2)],
+        ),
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Hi Kshitij! 👋',
+            style: TextStyle(
+              fontSize: 25,
+              fontWeight: FontWeight.w800,
+              color: primaryGreen,
+            ),
+          ),
+          const SizedBox(height: 7),
+          const Text(
+            'Track. Analyse. Invest Smarter.',
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w700,
+              color: darkText,
+            ),
+          ),
+          const SizedBox(height: 7),
+          const Text(
+            'Real market data • AI insights • One workspace',
+            style: TextStyle(color: greyText, fontSize: 13),
+          ),
+          const SizedBox(height: 18),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 7,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.circle, size: 9, color: green),
+                    SizedBox(width: 6),
+                    Text(
+                      'LIVE MARKET',
+                      style: TextStyle(
+                        color: green,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Text(
+                'Powered by Upstox V3',
+                style: TextStyle(color: greyText, fontSize: 11),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _marketCard(Map<String, dynamic>? data, String fallback) {
+    final symbol = data?['symbol']?.toString() ?? fallback;
+
+    final company = data?['company']?.toString() ?? fallback;
+
+    final priceValue = data?['price'] ?? data?['ltp'] ?? data?['last_price'];
+
+    final changeValue = data?['change_percent'] ?? data?['percent_change'];
+
+    final positive = (double.tryParse(changeValue?.toString() ?? '') ?? 0) >= 0;
+
+    return Container(
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: borderColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  symbol,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+                decoration: BoxDecoration(
+                  color: lightGreen,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text(
+                  'LIVE',
+                  style: TextStyle(
+                    color: green,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 9,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            company,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: greyText, fontSize: 11),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            loading ? 'Loading...' : price(priceValue),
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            loading ? '--' : change(changeValue),
+            style: TextStyle(
+              color: positive ? green : red,
+              fontWeight: FontWeight.w700,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _sectionTitle(String title, String subtitle) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            title,
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+          ),
+        ),
+        Text(subtitle, style: const TextStyle(color: greyText, fontSize: 12)),
+      ],
+    );
+  }
+
+  Widget _featureCard({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(17),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 45,
+            height: 45,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(13),
+            ),
+            child: Icon(icon, color: primaryGreen),
+          ),
+          const SizedBox(width: 13),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    color: greyText,
+                    fontSize: 12,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================================
+// RESEARCH
+// ============================================================
+
+class ResearchScreen extends StatefulWidget {
+  const ResearchScreen({super.key});
+
+  @override
+  State<ResearchScreen> createState() => _ResearchScreenState();
+}
+
+class _ResearchScreenState extends State<ResearchScreen> {
+  late final TextEditingController searchController;
+
+  StockAnalysis? analysis;
+
+  bool analysing = false;
+
+  String? errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+
+    searchController = TextEditingController(text: 'ICICIBANK');
+
+    analyseStock('ICICIBANK');
+  }
+
+  @override
+  void dispose() {
+    searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> analyseStock(String symbol) async {
+    final clean = symbol.trim().toUpperCase();
+
+    if (clean.isEmpty) return;
+
+    FocusManager.instance.primaryFocus?.unfocus();
+
+    setState(() {
+      analysing = true;
+      errorMessage = null;
+    });
+
+    try {
+      final json = await InvestEdgeApi.analyse(clean);
+
+      final result = StockAnalysis.fromJson(json);
+
+      if (!mounted) return;
+
+      setState(() {
+        analysis = result;
+        analysing = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        analysing = false;
+        errorMessage = error.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
+  String money(double value) {
+    return '₹${value.toStringAsFixed(2)}';
+  }
+
+  Color recommendationColor(String recommendation) {
+    if (recommendation == 'BUY') {
+      return green;
+    }
+
+    if (recommendation == 'SELL') {
+      return red;
+    }
+
+    return orange;
+  }
+
+  Color trendColor(String trend) {
+    if (trend == 'Bullish') {
+      return green;
+    }
+
+    if (trend == 'Bearish') {
+      return red;
+    }
+
+    return orange;
+  }
+
+  String updatedTime(String value) {
+    if (value.isEmpty) return '--';
+
+    try {
+      final date = DateTime.parse(value).toLocal();
+
+      final hour = date.hour.toString().padLeft(2, '0');
+
+      final minute = date.minute.toString().padLeft(2, '0');
+
+      final second = date.second.toString().padLeft(2, '0');
+
+      return '$hour:$minute:$second';
+    } catch (_) {
+      return value;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return RefreshIndicator(
+      onRefresh: () async {
+        await analyseStock(searchController.text);
+      },
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(18, 5, 18, 35),
+        children: [
+          _researchHeader(),
+          const SizedBox(height: 15),
+          _searchBox(),
+          const SizedBox(height: 18),
+          if (analysing)
+            _loadingCard()
+          else if (errorMessage != null)
+            _errorCard()
+          else if (analysis != null)
+            _analysisContent(analysis!),
+          if (analysis == null && !analysing && errorMessage == null)
+            _emptyCard(),
+        ],
+      ),
+    );
+  }
+
+  Widget _researchHeader() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'AI Market Research',
+          style: TextStyle(
+            fontSize: 26,
+            fontWeight: FontWeight.w800,
+            color: primaryGreen,
+          ),
+        ),
+        const SizedBox(height: 5),
+        const Text(
+          'Live market intelligence powered by Upstox V3',
+          style: TextStyle(color: greyText, fontSize: 13),
+        ),
+      ],
+    );
+  }
+
+  Widget _searchBox() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: borderColor),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.search, color: greyText),
+          const SizedBox(width: 8),
+          Expanded(
+            child: TextField(
+              controller: searchController,
+              textCapitalization: TextCapitalization.characters,
+              decoration: const InputDecoration(
+                border: InputBorder.none,
+                hintText: 'Search stock e.g. ICICIBANK',
+              ),
+              onSubmitted: analyseStock,
+            ),
+          ),
+          analysing
+              ? const Padding(
+                  padding: EdgeInsets.all(8),
+                  child: SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                )
+              : IconButton(
+                  tooltip: 'Analyse',
+                  onPressed: () {
+                    analyseStock(searchController.text);
+                  },
+                  icon: const Icon(Icons.arrow_forward, color: primaryGreen),
+                ),
+        ],
+      ),
+    );
+  }
+
+  Widget _loadingCard() {
+    return Container(
+      padding: const EdgeInsets.all(30),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: borderColor),
+      ),
+      child: const Column(
+        children: [
+          CircularProgressIndicator(color: primaryGreen),
+          SizedBox(height: 15),
+          Text(
+            'Fetching live market analysis...',
+            style: TextStyle(fontWeight: FontWeight.w700),
+          ),
+          SizedBox(height: 5),
+          Text(
+            'Getting NSE data and technical indicators from Upstox V3',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: greyText, fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _errorCard() {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: lightRed,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.red.shade100),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.error_outline, color: red),
+              SizedBox(width: 8),
+              Text(
+                'Analysis failed',
+                style: TextStyle(fontWeight: FontWeight.w800, color: red),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            errorMessage ?? '',
+            style: const TextStyle(color: darkText, fontSize: 13),
+          ),
+          const SizedBox(height: 12),
+          FilledButton.icon(
+            onPressed: () {
+              analyseStock(searchController.text);
+            },
+            icon: const Icon(Icons.refresh),
+            label: const Text('Try Again'),
+            style: FilledButton.styleFrom(backgroundColor: red),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _emptyCard() {
+    return Container(
+      padding: const EdgeInsets.all(30),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: const Column(
+        children: [
+          Icon(Icons.auto_graph, size: 45, color: primaryGreen),
+          SizedBox(height: 12),
+          Text(
+            'Search a stock to begin',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _analysisContent(StockAnalysis data) {
+    final recColor = recommendationColor(data.recommendation);
+
+    final trColor = trendColor(data.trend);
+
+    final positive = data.changePercent >= 0;
+
+    return Column(
+      children: [
+        _stockHero(data, recColor, trColor, positive),
+        const SizedBox(height: 14),
+        _signalCard(data, recColor),
+        const SizedBox(height: 14),
+        _scoreGrid(data),
+        const SizedBox(height: 14),
+        _indicatorCard(data),
+        const SizedBox(height: 14),
+        _levelsCard(data),
+        const SizedBox(height: 14),
+        _insightCard(data),
+        const SizedBox(height: 14),
+        _dataCard(data),
+      ],
+    );
+  }
+
+  Widget _stockHero(
+    StockAnalysis data,
+    Color recColor,
+    Color trColor,
+    bool positive,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: borderColor),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.035),
+            blurRadius: 16,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          data.symbol,
+                          style: const TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        _badge('LIVE', green, lightGreen),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      data.company,
+                      style: const TextStyle(color: greyText, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: 'Refresh',
+                onPressed: analysing
+                    ? null
+                    : () {
+                        analyseStock(data.symbol);
+                      },
+                icon: const Icon(Icons.refresh),
+              ),
+            ],
+          ),
+          const SizedBox(height: 15),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                money(data.price),
+                style: const TextStyle(
+                  fontSize: 31,
+                  fontWeight: FontWeight.w900,
+                  color: primaryGreen,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 5),
+                child: Text(
+                  '${positive ? '+' : ''}${data.change.toStringAsFixed(2)} '
+                  '(${positive ? '+' : ''}${data.changePercent.toStringAsFixed(2)}%)',
+                  style: TextStyle(
+                    color: positive ? green : red,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 5),
+          Text(
+            'NSE • ${data.provider} ${data.providerVersion}',
+            style: const TextStyle(color: greyText, fontSize: 11),
+          ),
+          const SizedBox(height: 15),
+          Row(
+            children: [
+              Expanded(child: _miniSignal('TREND', data.trend, trColor)),
+              const SizedBox(width: 9),
+              Expanded(
+                child: _miniSignal('SIGNAL', data.recommendation, recColor),
+              ),
+              const SizedBox(width: 9),
+              Expanded(
+                child: _miniSignal(
+                  'CONFIDENCE',
+                  '${data.confidence.toStringAsFixed(1)}%',
+                  blue,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _signalCard(StockAnalysis data, Color recColor) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: recColor.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: recColor.withValues(alpha: 0.22)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 58,
+            height: 58,
+            decoration: BoxDecoration(
+              color: recColor,
+              borderRadius: BorderRadius.circular(17),
+            ),
+            child: Icon(
+              data.recommendation == 'BUY'
+                  ? Icons.trending_up
+                  : data.recommendation == 'SELL'
+                  ? Icons.trending_down
+                  : Icons.pause,
+              color: Colors.white,
+              size: 30,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  data.recommendation,
+                  style: TextStyle(
+                    color: recColor,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  'InvestEdge signal • ${data.overallScore.toStringAsFixed(1)}/100',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              const Text(
+                'CONFIDENCE',
+                style: TextStyle(
+                  color: greyText,
+                  fontSize: 9,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '${data.confidence.toStringAsFixed(1)}%',
+                style: TextStyle(
+                  color: recColor,
+                  fontSize: 19,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _scoreGrid(StockAnalysis data) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Market Score',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(child: _scoreCard('Technical', data.technical, blue)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _scoreCard('Fundamental', data.fundamental, orange),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(child: _scoreCard('Momentum', data.momentum, green)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _scoreCard(
+                'Risk',
+                data.risk,
+                data.risk >= 70
+                    ? red
+                    : data.risk >= 50
+                    ? orange
+                    : green,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _scoreCard(String title, double value, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(17),
+        border: Border.all(color: borderColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              color: greyText,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '${value.toStringAsFixed(1)}/100',
+            style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: LinearProgressIndicator(
+              value: value / 100,
+              minHeight: 6,
+              backgroundColor: color.withValues(alpha: 0.12),
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _indicatorCard(StockAnalysis data) {
+    return _sectionCard(
+      title: 'Technical Indicators',
+      icon: Icons.analytics_outlined,
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: _indicator(
+                  'RSI (14)',
+                  data.rsi == null ? '--' : data.rsi!.toStringAsFixed(2),
+                  data.rsi == null
+                      ? greyText
+                      : data.rsi! >= 70
+                      ? red
+                      : data.rsi! <= 30
+                      ? orange
+                      : green,
+                ),
+              ),
+              Expanded(
+                child: _indicator(
+                  'SMA 20',
+                  data.sma20 == null ? '--' : money(data.sma20!),
+                  data.sma20 != null && data.price > data.sma20! ? green : red,
+                ),
+              ),
+            ],
+          ),
+          const Divider(height: 24),
+          Row(
+            children: [
+              Expanded(
+                child: _indicator(
+                  'SMA 50',
+                  data.sma50 == null ? '--' : money(data.sma50!),
+                  data.sma50 != null && data.price > data.sma50! ? green : red,
+                ),
+              ),
+              Expanded(child: _indicator('Candles', '${data.candles}', blue)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              '${data.timeframe} • '
+              '${data.candles} candles available',
+              style: const TextStyle(color: greyText, fontSize: 11),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _indicator(String title, String value, Color color) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: const TextStyle(color: greyText, fontSize: 11)),
+        const SizedBox(height: 5),
+        Text(
+          value,
+          style: TextStyle(
+            color: color,
+            fontSize: 17,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _levelsCard(StockAnalysis data) {
+    return _sectionCard(
+      title: 'Trade Levels',
+      icon: Icons.track_changes,
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: _level(
+                  'ENTRY ZONE',
+                  '${money(data.entryLow)}\n– ${money(data.entryHigh)}',
+                  blue,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(child: _level('TARGET 1', money(data.target), green)),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(child: _level('TARGET 2', money(data.target2), green)),
+              const SizedBox(width: 10),
+              Expanded(child: _level('STOP LOSS', money(data.stopLoss), red)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'Levels are analytical estimates generated by the current InvestEdge signal engine.',
+            style: TextStyle(color: greyText, fontSize: 10, height: 1.35),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _level(String title, String value, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withValues(alpha: 0.18)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: TextStyle(
+              color: color,
+              fontSize: 9,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _insightCard(StockAnalysis data) {
+    return _sectionCard(
+      title: 'AI Market Insight',
+      icon: Icons.auto_awesome,
+      child: Text(
+        data.insight,
+        style: const TextStyle(color: darkText, fontSize: 13, height: 1.55),
+      ),
+    );
+  }
+
+  Widget _dataCard(StockAnalysis data) {
+    return Container(
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F3F0),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.verified_outlined, color: green, size: 19),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'LIVE • ${data.provider} ${data.providerVersion} • '
+              'Updated ${updatedTime(data.lastUpdated)}',
+              style: const TextStyle(
+                color: greyText,
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _sectionCard({
+    required String title,
+    required IconData icon,
+    required Widget child,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(17),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(19),
+        border: Border.all(color: borderColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: primaryGreen, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          child,
+        ],
+      ),
+    );
+  }
+
+  Widget _miniSignal(String title, String value, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              color: greyText,
+              fontSize: 8,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: color,
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _badge(String text, Color textColor, Color backgroundColor) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(7),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: textColor,
+          fontSize: 9,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================
+// PORTFOLIO
+// ============================================================
+
+class PortfolioScreen extends StatelessWidget {
+  const PortfolioScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(18),
+      children: [
+        const Text(
+          'Portfolio',
+          style: TextStyle(
+            fontSize: 27,
+            fontWeight: FontWeight.w900,
+            color: primaryGreen,
+          ),
+        ),
+        const SizedBox(height: 5),
+        const Text(
+          'Track, analyse and optimize your investments.',
+          style: TextStyle(color: greyText),
+        ),
+        const SizedBox(height: 18),
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: primaryGreen,
+            borderRadius: BorderRadius.circular(22),
+          ),
+          child: const Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Total Portfolio Value',
+                style: TextStyle(color: Colors.white70, fontSize: 12),
+              ),
+              SizedBox(height: 8),
+              Text(
+                '₹12,40,521',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 30,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              SizedBox(height: 6),
+              Text(
+                '+12.4% overall',
+                style: TextStyle(
+                  color: Color(0xFF9BE0B7),
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 15),
+        _portfolioCard('Equity', '35%', Icons.show_chart, green),
+        _portfolioCard('Mutual Funds', '30%', Icons.account_balance, blue),
+        _portfolioCard('Gold / ETFs', '20%', Icons.workspace_premium, orange),
+        _portfolioCard(
+          'Bonds',
+          '10%',
+          Icons.account_balance_wallet,
+          const Color(0xFF7C61B8),
+        ),
+        _portfolioCard('Cash', '5%', Icons.payments_outlined, greyText),
+      ],
+    );
+  }
+
+  Widget _portfolioCard(
+    String title,
+    String value,
+    IconData icon,
+    Color color,
+  ) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(17),
+        border: Border.all(color: borderColor),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: color),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              title,
+              style: const TextStyle(fontWeight: FontWeight.w800),
+            ),
+          ),
+          Text(
+            value,
+            style: TextStyle(color: color, fontWeight: FontWeight.w900),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================================
+// ACCOUNT
+// ============================================================
+
+class AccountScreen extends StatelessWidget {
+  const AccountScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(18),
+      children: [
+        const Text(
+          'Account',
+          style: TextStyle(
+            fontSize: 27,
+            fontWeight: FontWeight.w900,
+            color: primaryGreen,
+          ),
+        ),
+        const SizedBox(height: 18),
+        Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: borderColor),
+          ),
+          child: const Row(
+            children: [
+              CircleAvatar(
+                radius: 28,
+                backgroundColor: primaryGreen,
+                child: Text(
+                  'K',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 21,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              SizedBox(width: 13),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'InvestEdge User',
+                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+                  ),
+                  SizedBox(height: 3),
+                  Text(
+                    'AI Market Intelligence',
+                    style: TextStyle(color: greyText, fontSize: 12),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 15),
+        _accountItem(Icons.security_outlined, 'Account Security'),
+        _accountItem(Icons.notifications_none, 'Notifications'),
+        _accountItem(Icons.settings_outlined, 'Settings'),
+        _accountItem(Icons.help_outline, 'Help & Support'),
+        _accountItem(Icons.info_outline, 'About InvestEdge'),
+      ],
+    );
+  }
+
+  Widget _accountItem(IconData icon, String title) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 9),
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: borderColor),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: primaryGreen),
+          const SizedBox(width: 13),
+          Expanded(
+            child: Text(
+              title,
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+          const Icon(Icons.chevron_right, color: greyText),
+        ],
+      ),
+    );
+  }
+}

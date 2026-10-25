@@ -1,0 +1,2960 @@
+﻿import 'dart:async';
+import 'dart:convert';
+import 'dart:math';
+
+import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
+
+const String investEdgeBackendWsUrl = String.fromEnvironment(
+  'INVESTEDGE_BACKEND_URL',
+  defaultValue: 'ws://127.0.0.1:8000/ws/market',
+);
+
+void main() => runApp(const InvestEdgeApp());
+
+// ============================================================
+// INVESTEDGE â€” DASHBOARD REPLACEMENT
+// Keeps the existing live WebSocket, watchlist, portfolio,
+// account/lock flow and SharedPreferences storage.
+// Adds responsive desktop dashboard UI + Future Outlook UI.
+// ============================================================
+
+const Color kGreen = Color(0xFF183B35);
+const Color kGreen2 = Color(0xFF2E6F63);
+const Color kMint = Color(0xFFE8F2EE);
+const Color kBg = Color(0xFFF6F5F0);
+const Color kCard = Colors.white;
+const Color kText = Color(0xFF202522);
+const Color kMuted = Color(0xFF747872);
+const Color kBorder = Color(0xFFE5E4DD);
+const Color kRed = Color(0xFFC94C4C);
+const Color kAmber = Color(0xFFD38A22);
+const Color kBlue = Color(0xFF3B73B9);
+
+enum Signal { buy, hold, sell }
+
+enum InvestEdgePlan { free, pro }
+
+class InvestEdgeEntitlement {
+  final InvestEdgePlan plan;
+  const InvestEdgeEntitlement({this.plan = InvestEdgePlan.free});
+  bool get isPro => plan == InvestEdgePlan.pro;
+  bool get canUseFutureOutlook => isPro;
+  bool get canUseScenarioAnalysis => isPro;
+  bool get canUseAdvancedResearch => isPro;
+  bool get canUseAdvancedPortfolio => isPro;
+  bool get canUseAdvancedComparisons => isPro;
+  bool get canUsePremiumAlerts => isPro;
+  bool get canUsePremiumReports => isPro;
+}
+
+class Stock {
+  final String symbol;
+  String name;
+  double price;
+  double change;
+  double rsi;
+  double technical;
+  double fundamental;
+  double momentum;
+  double risk;
+  double confidence;
+  Signal signal;
+  DateTime updated;
+
+  Stock({
+    required this.symbol,
+    required this.name,
+    required this.price,
+    this.change = 0,
+    this.rsi = 50,
+    this.technical = 50,
+    this.fundamental = 60,
+    this.momentum = 50,
+    this.risk = 50,
+    this.signal = Signal.hold,
+    this.confidence = 50,
+    DateTime? updated,
+  }) : updated = updated ?? DateTime.now();
+}
+
+class Holding {
+  final String symbol;
+  double qty;
+  double avgPrice;
+  Holding(this.symbol, this.qty, this.avgPrice);
+}
+
+class SignalEngine {
+  static void update(Stock s, Random r) {
+    s.change = (s.change * .85) + (r.nextDouble() - .54) * .9;
+    s.price = max(.5, s.price * (1 + s.change / 10000));
+    s.rsi = (s.rsi + (r.nextDouble() - .5) * 5).clamp(8, 92);
+    s.momentum = (50 + s.change * 8 + (r.nextDouble() - .5) * 15).clamp(0, 100);
+    s.technical = (50 + (50 - s.rsi) * .35 + s.momentum * .35).clamp(0, 100);
+    s.fundamental = (45 + r.nextDouble() * 45).clamp(0, 100);
+    s.risk = (55 - s.change.abs() * 5 + r.nextDouble() * 20).clamp(5, 95);
+    final score =
+        s.technical * .35 +
+        s.fundamental * .30 +
+        s.momentum * .20 +
+        s.risk * .15;
+    s.signal = score >= 68
+        ? Signal.buy
+        : score <= 43
+        ? Signal.sell
+        : Signal.hold;
+    s.confidence = (50 + (score - 50).abs() * 1.25).clamp(50, 95);
+    s.updated = DateTime.now();
+  }
+}
+
+const List<String> universe = <String>[
+  'RELIANCE',
+  'TCS',
+  'HDFCBANK',
+  'ICICIBANK',
+  'INFY',
+  'ITC',
+  'SBIN',
+  'BHARTIARTL',
+  'KOTAKBANK',
+  'AXISBANK',
+  'LT',
+  'HINDUNILVR',
+  'BAJFINANCE',
+  'MARUTI',
+  'SUNPHARMA',
+  'M&M',
+  'HCLTECH',
+  'WIPRO',
+  'ULTRACEMCO',
+  'TITAN',
+  'ASIANPAINT',
+  'NESTLEIND',
+  'TATAMOTORS',
+  'TATASTEEL',
+  'NTPC',
+  'POWERGRID',
+  'ONGC',
+  'COALINDIA',
+  'ADANIENT',
+  'ADANIPORTS',
+  'ADANIPOWER',
+  'JSWSTEEL',
+  'JINDALSTEL',
+  'GRASIM',
+  'EICHERMOT',
+  'HEROMOTOCO',
+  'BAJAJ-AUTO',
+  'TVSMOTOR',
+  'APOLLOHOSP',
+  'CIPLA',
+  'DRREDDY',
+  'DIVISLAB',
+  'SBILIFE',
+  'HDFCLIFE',
+  'ICICIPRULI',
+  'LTIM',
+  'TECHM',
+  'INDUSINDBK',
+  'BANKBARODA',
+  'PNB',
+  'CANBK',
+  'IDFCFIRSTB',
+  'FEDERALBNK',
+  'RECLTD',
+  'PFC',
+  'IRFC',
+  'BEL',
+  'HAL',
+  'BHEL',
+  'IOC',
+  'BPCL',
+  'HPCL',
+  'GAIL',
+  'TATAPOWER',
+  'NHPC',
+  'SJVN',
+  'VEDL',
+  'HINDALCO',
+  'JSWENERGY',
+  'TRENT',
+  'DMART',
+  'ZOMATO',
+  'NYKAA',
+  'DELHIVERY',
+  'PAYTM',
+  'PERSISTENT',
+  'COFORGE',
+  'MPHASIS',
+  'LTTS',
+  'DIXON',
+  'KPIT',
+  'CYIENT',
+  'SUPREMEIND',
+  'ASTRAL',
+  'POLYCAB',
+  'KEI',
+  'HAVELLS',
+  'VOLTAS',
+  'CROMPTON',
+  'DABUR',
+  'GODREJCP',
+  'MARICO',
+  'COLPAL',
+  'BRITANNIA',
+  'PIDILITIND',
+  'BERGEPAINT',
+  'GODREJPROP',
+  'DLF',
+  'OBEROIRLTY',
+  'PRESTIGE',
+  'PHOENIXLTD',
+  'LODHA',
+  'SHREECEM',
+  'AMBUJACEM',
+  'ACC',
+  'DALBHARAT',
+  'RAMCOCEM',
+  'JKLAKSHMI',
+  'INDHOTEL',
+  'EIH',
+  'IRCTC',
+  'CONCOR',
+  'RVNL',
+  'RITES',
+  'MOTHERSON',
+  'BOSCHLTD',
+  'ASHOKLEY',
+  'ESCORTS',
+  'EXIDEIND',
+  'SIEMENS',
+  'ABB',
+  'INDIGO',
+  'MAXHEALTH',
+  'FORTIS',
+  'LAURUSLABS',
+  'AUROPHARMA',
+  'ALKEM',
+  'LUPIN',
+  'BIOCON',
+  'GLENMARK',
+  'TORNTPHARM',
+  'ZYDUSLIFE',
+  'IPCA',
+  'NATCOPHARM',
+  'AJANTAPHARM',
+  'ICICIGI',
+  'GICRE',
+  'CHOLAFIN',
+  'MUTHOOTFIN',
+  'MANAPPURAM',
+  'SHRIRAMFIN',
+  'LICHSGFIN',
+  'POLICYBZR',
+  'ANGELONE',
+  'MCX',
+  'BSE',
+  'CDSL',
+  'IEX',
+  'CAMS',
+  'KFINTECH',
+  'RBLBANK',
+  'BANDHANBNK',
+  'IDBI',
+  'INDIANB',
+  'UCOBANK',
+  'UNIONBANK',
+  'MAHABANK',
+  'IOB',
+  'SAIL',
+  'NMDC',
+  'NATIONALUM',
+  'HINDZINC',
+  'JSL',
+  'MGL',
+  'IGL',
+  'PETRONET',
+  'APLAPOLLO',
+  'INOXWIND',
+  'SUZLON',
+  'ZEEL',
+  'PVRINOX',
+  'SUNTV',
+  'ABFRL',
+  'BATAINDIA',
+  'PAGEIND',
+  'KALYANKJIL',
+  'INDIAMART',
+  'NAUKRI',
+  'INFOEDGE',
+  'EASEMYTRIP',
+  'NBCC',
+  'NLCINDIA',
+  'HUDCO',
+  'IREDA',
+  'KPIGREEN',
+  'YESBANK',
+  'JUBLFOOD',
+  'SRF',
+  'DEEPAKNTR',
+  'ATUL',
+  'AARTIIND',
+  'PIIND',
+  'COROMANDEL',
+  'UPL',
+  'FINEORG',
+  'VINATIORGA',
+  'ALKYLAMINE',
+  'DEEPAKFERT',
+  'GNFC',
+  'CHAMBLFERT',
+  'CANFINHOME',
+  'LICI',
+];
+
+const Map<String, String> names = <String, String>{
+  'RELIANCE': 'Reliance Industries',
+  'TCS': 'Tata Consultancy Services',
+  'HDFCBANK': 'HDFC Bank',
+  'ICICIBANK': 'ICICI Bank',
+  'INFY': 'Infosys',
+  'ITC': 'ITC',
+  'SBIN': 'State Bank of India',
+  'BHARTIARTL': 'Bharti Airtel',
+  'KOTAKBANK': 'Kotak Mahindra Bank',
+  'AXISBANK': 'Axis Bank',
+  'LT': 'Larsen & Toubro',
+  'HINDUNILVR': 'Hindustan Unilever',
+  'BAJFINANCE': 'Bajaj Finance',
+  'MARUTI': 'Maruti Suzuki India',
+  'SUNPHARMA': 'Sun Pharmaceutical Industries',
+  'M&M': 'Mahindra & Mahindra',
+  'HCLTECH': 'HCL Technologies',
+  'WIPRO': 'Wipro',
+  'TITAN': 'Titan Company',
+  'TATAMOTORS': 'Tata Motors',
+  'TATASTEEL': 'Tata Steel',
+  'NTPC': 'NTPC',
+  'POWERGRID': 'Power Grid Corporation',
+  'ONGC': 'Oil & Natural Gas Corporation',
+  'COALINDIA': 'Coal India',
+  'ADANIENT': 'Adani Enterprises',
+  'ADANIPORTS': 'Adani Ports',
+  'JSWSTEEL': 'JSW Steel',
+  'ZOMATO': 'Eternal (Zomato)',
+  'PAYTM': 'One97 Communications',
+  'DMART': 'Avenue Supermarts',
+  'TRENT': 'Trent',
+  'IRCTC': 'Indian Railway Catering & Tourism Corporation',
+  'HAL': 'Hindustan Aeronautics',
+  'BEL': 'Bharat Electronics',
+  'LICI': 'Life Insurance Corporation of India',
+  'YESBANK': 'Yes Bank',
+  'BSE': 'BSE Ltd',
+  'CDSL': 'Central Depository Services',
+  'MCX': 'Multi Commodity Exchange',
+  'NAUKRI': 'Info Edge',
+  'INDIGO': 'InterGlobe Aviation',
+  'DLF': 'DLF',
+};
+
+class MarketEngine {
+  final Random random = Random();
+  final Map<String, Stock> stocks = {};
+  final Map<String, String> catalog = {};
+  final StreamController<String> _ticks = StreamController.broadcast();
+  Timer? _timer;
+  bool isLive = false;
+
+  Stream<String> get ticks => _ticks.stream;
+  bool get hasBackendState => isLive;
+
+  MarketEngine() {
+    for (final symbol in universe) {
+      final s = Stock(
+        symbol: symbol,
+        name: names[symbol] ?? '$symbol (NSE)',
+        price: 40 + random.nextInt(16000).toDouble(),
+        change: (random.nextDouble() - .5) * 2,
+        rsi: 30 + random.nextDouble() * 40,
+      );
+      SignalEngine.update(s, random);
+      stocks[symbol] = s;
+    }
+    stocks['RELIANCE']?.price = 1178;
+    stocks['TCS']?.price = 2076;
+    stocks['HDFCBANK']?.price = 692.25;
+    stocks['ICICIBANK']?.price = 1349;
+  }
+
+  void start() {
+    _timer ??= Timer.periodic(const Duration(milliseconds: 1200), (_) {
+      final keys = stocks.keys.toList();
+      for (int i = 0; i < min(35, keys.length); i++) {
+        final key = keys[random.nextInt(keys.length)];
+        final stock = stocks[key];
+        if (stock != null) SignalEngine.update(stock, random);
+        _ticks.add(key);
+      }
+    });
+  }
+
+  void stopSimulator({bool live = false}) {
+    _timer?.cancel();
+    _timer = null;
+    isLive = live;
+  }
+
+  void applyLiveTick(Map<String, dynamic> data) {
+    final symbol = (data['symbol'] ?? '').toString().toUpperCase();
+    if (symbol.isEmpty) return;
+    final s = stocks.putIfAbsent(
+      symbol,
+      () => Stock(
+        symbol: symbol,
+        name: catalog[symbol] ?? names[symbol] ?? '$symbol (NSE)',
+        price: 100,
+      ),
+    );
+
+    double? number(dynamic v) =>
+        v is num ? v.toDouble() : double.tryParse('$v');
+
+    s.price = number(data['price']) ?? s.price;
+    s.change =
+        number(data['change']) ?? number(data['change_percent']) ?? s.change;
+    s.rsi = number(data['rsi']) ?? s.rsi;
+    s.technical = number(data['technical']) ?? s.technical;
+    s.fundamental = number(data['fundamental']) ?? s.fundamental;
+    s.momentum = number(data['momentum']) ?? s.momentum;
+    s.risk = number(data['risk']) ?? s.risk;
+    s.confidence = number(data['confidence']) ?? s.confidence;
+
+    final signal = (data['signal'] ?? 'HOLD').toString().toUpperCase();
+    s.signal = signal == 'BUY'
+        ? Signal.buy
+        : signal == 'SELL'
+        ? Signal.sell
+        : Signal.hold;
+
+    final updated = int.tryParse('${data['updated'] ?? ''}');
+    s.updated = updated == null
+        ? DateTime.now()
+        : DateTime.fromMillisecondsSinceEpoch(updated);
+  }
+
+  void applyCatalog(List<dynamic> rows) {
+    for (final raw in rows) {
+      if (raw is! Map) continue;
+      final symbol = (raw['symbol'] ?? '').toString().toUpperCase();
+      if (symbol.isEmpty) continue;
+      final name = (raw['name'] ?? symbol).toString();
+      catalog[symbol] = name;
+      stocks[symbol]?.name = name;
+    }
+  }
+
+  Stock ensure(String raw) {
+    final symbol = raw.trim().toUpperCase().replaceAll(' ', '');
+    if (symbol.isEmpty) throw Exception('Enter an NSE symbol.');
+    return stocks.putIfAbsent(symbol, () {
+      final s = Stock(
+        symbol: symbol,
+        name: catalog[symbol] ?? names[symbol] ?? '$symbol (NSE)',
+        price: 100 + random.nextInt(4000).toDouble(),
+        rsi: 45 + random.nextDouble() * 10,
+      );
+      SignalEngine.update(s, random);
+      return s;
+    });
+  }
+
+  void dispose() {
+    _timer?.cancel();
+    _ticks.close();
+  }
+}
+
+class LiveBackend {
+  LiveBackend({this.url = investEdgeBackendWsUrl});
+  final String url;
+  WebSocketChannel? _channel;
+  StreamSubscription? _subscription;
+  bool connected = false;
+
+  Future<void> connect({
+    required void Function(Map<String, dynamic>) onMessage,
+    required void Function(bool) onConnection,
+  }) async {
+    try {
+      final channel = WebSocketChannel.connect(Uri.parse(url));
+      _channel = channel;
+      await channel.ready;
+      connected = true;
+      onConnection(true);
+
+      _subscription = channel.stream.listen(
+        (event) {
+          try {
+            final data = jsonDecode(event.toString());
+            if (data is Map<String, dynamic>) onMessage(data);
+          } catch (_) {}
+        },
+        onDone: () {
+          connected = false;
+          onConnection(false);
+        },
+        onError: (_) {
+          connected = false;
+          onConnection(false);
+        },
+      );
+    } catch (_) {
+      connected = false;
+      onConnection(false);
+    }
+  }
+
+  void subscribe(List<String> symbols) {
+    if (!connected) return;
+    _channel?.sink.add(jsonEncode({'action': 'subscribe', 'symbols': symbols}));
+  }
+
+  Future<void> dispose() async {
+    await _subscription?.cancel();
+    await _channel?.sink.close();
+  }
+}
+
+class InvestEdgeApp extends StatelessWidget {
+  const InvestEdgeApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: 'InvestEdge',
+      theme: ThemeData(
+        useMaterial3: true,
+        scaffoldBackgroundColor: kBg,
+        colorScheme: ColorScheme.fromSeed(seedColor: kGreen),
+        fontFamily: 'Arial',
+      ),
+      home: const InvestEdgeShell(),
+    );
+  }
+}
+
+class InvestEdgeShell extends StatefulWidget {
+  const InvestEdgeShell({super.key});
+
+  @override
+  State<InvestEdgeShell> createState() => _InvestEdgeShellState();
+}
+
+class _InvestEdgeShellState extends State<InvestEdgeShell> {
+  final MarketEngine market = MarketEngine();
+  final LiveBackend backend = LiveBackend();
+  final InvestEdgeEntitlement entitlement = const InvestEdgeEntitlement();
+  final TextEditingController searchController = TextEditingController();
+  final ScrollController _sidebarScrollController = ScrollController();
+
+  final List<String> watchlist = [
+    'RELIANCE',
+    'TCS',
+    'HDFCBANK',
+    'ICICIBANK',
+    'INFY',
+    'ITC',
+    'AXISBANK',
+    'SBIN',
+  ];
+
+  final Map<String, Holding> portfolio = {};
+  int tab = 0;
+  String? selected;
+  bool locked = false;
+  bool backendOnline = false;
+
+  @override
+  void initState() {
+    super.initState();
+    market.start();
+    market.ticks.listen((_) {
+      if (mounted) setState(() {});
+    });
+    _loadLocalState();
+
+    backend.connect(
+      onConnection: (online) {
+        if (!mounted) return;
+        setState(() => backendOnline = online);
+        if (online) {
+          market.stopSimulator(live: true);
+          backend.subscribe(watchlist);
+        }
+      },
+      onMessage: (data) {
+        if (!mounted) return;
+
+        if (data['type'] == 'status') {
+          final source = (data['source'] ?? '').toString().toLowerCase();
+          setState(() => market.isLive = source == 'upstox');
+        } else if (data['type'] == 'catalog') {
+          market.applyCatalog((data['stocks'] as List?) ?? const []);
+          setState(() {});
+        } else if (data['type'] == 'tick') {
+          market.applyLiveTick(data);
+          if ((data['source'] ?? '').toString().toLowerCase() == 'upstox') {
+            market.isLive = true;
+          }
+          setState(() {});
+        }
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    searchController.dispose();
+    _sidebarScrollController.dispose();
+    backend.dispose();
+    market.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadLocalState() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    final savedWatch = prefs.getStringList('watchlist');
+    if (savedWatch != null && savedWatch.isNotEmpty) {
+      watchlist
+        ..clear()
+        ..addAll(savedWatch);
+    }
+
+    final raw = prefs.getString('portfolio');
+    if (raw != null) {
+      try {
+        final list = jsonDecode(raw) as List;
+        for (final item in list) {
+          final m = Map<String, dynamic>.from(item);
+          portfolio[m['symbol'].toString()] = Holding(
+            m['symbol'].toString(),
+            (m['qty'] as num).toDouble(),
+            (m['avgPrice'] as num).toDouble(),
+          );
+        }
+      } catch (_) {}
+    }
+
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _saveWatchlist() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('watchlist', watchlist);
+  }
+
+  Future<void> _savePortfolio() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      'portfolio',
+      jsonEncode(
+        portfolio.values
+            .map(
+              (h) => {'symbol': h.symbol, 'qty': h.qty, 'avgPrice': h.avgPrice},
+            )
+            .toList(),
+      ),
+    );
+  }
+
+  Stock getStock(String symbol) => market.ensure(symbol);
+
+  void openStock(String symbol) {
+    final sym = symbol.trim().toUpperCase().replaceAll(' ', '');
+    if (sym.isEmpty) return;
+    getStock(sym);
+    setState(() {
+      selected = sym;
+      tab = 1;
+    });
+    backend.subscribe({...watchlist, sym}.toList());
+  }
+
+  void toggleWatch(String symbol) {
+    setState(() {
+      if (watchlist.contains(symbol)) {
+        watchlist.remove(symbol);
+      } else {
+        watchlist.add(symbol);
+      }
+    });
+    _saveWatchlist();
+    backend.subscribe(watchlist);
+  }
+
+  void selectTab(int value) {
+    setState(() {
+      tab = value;
+      selected = null;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (locked) return lockScreen();
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final desktop = constraints.maxWidth >= 1000;
+
+        if (desktop) {
+          return Scaffold(
+            body: Row(
+              children: [
+                sidebar(),
+                Expanded(child: desktopContent()),
+              ],
+            ),
+          );
+        }
+
+        return Scaffold(
+          appBar: mobileAppBar(),
+          body: SafeArea(child: mobileContent()),
+          bottomNavigationBar: mobileNav(),
+        );
+      },
+    );
+  }
+
+  PreferredSizeWidget mobileAppBar() {
+    return AppBar(
+      backgroundColor: Colors.white,
+      surfaceTintColor: Colors.transparent,
+      title: Row(
+        children: [
+          logo(),
+          const SizedBox(width: 9),
+          const Text(
+            'InvestEdge',
+            style: TextStyle(fontWeight: FontWeight.w900),
+          ),
+        ],
+      ),
+      actions: [
+        liveBadge(),
+        IconButton(
+          tooltip: 'Lock',
+          onPressed: () => setState(() => locked = true),
+          icon: const Icon(Icons.lock_outline),
+        ),
+      ],
+    );
+  }
+
+  Widget desktopContent() {
+    return Column(
+      children: [
+        topBar(),
+        Expanded(
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 180),
+            child: bodyForTab(),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget topBar() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(28, 18, 28, 14),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(bottom: BorderSide(color: kBorder)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: SizedBox(
+              height: 44,
+              child: TextField(
+                controller: searchController,
+                onSubmitted: openStock,
+                decoration: InputDecoration(
+                  hintText: 'Search stocks, mutual funds, ETFs, bonds...',
+                  prefixIcon: const Icon(Icons.search),
+                  filled: true,
+                  fillColor: kBg,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(13),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 18),
+          liveBadge(),
+          const SizedBox(width: 8),
+          IconButton(
+            tooltip: 'Lock session',
+            onPressed: () => setState(() => locked = true),
+            icon: const Icon(Icons.lock_outline),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget sidebar() {
+    return Container(
+      width: 238,
+      color: Colors.white,
+      padding: const EdgeInsets.fromLTRB(18, 22, 14, 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              logo(size: 42),
+              const SizedBox(width: 10),
+              const Text(
+                'InvestEdge',
+                style: TextStyle(
+                  color: kGreen,
+                  fontSize: 19,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          Expanded(
+            child: Scrollbar(
+              controller: _sidebarScrollController,
+              thumbVisibility: true,
+              child: SingleChildScrollView(
+                controller: _sidebarScrollController,
+                padding: const EdgeInsets.only(right: 4, bottom: 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'WORKSPACE',
+                      style: TextStyle(
+                        color: kMuted,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.1,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    navItem(Icons.dashboard_outlined, 'Dashboard', 0),
+                    navItem(Icons.show_chart, 'Stocks', 1),
+                    navItem(Icons.account_balance, 'Mutual Funds', 5),
+                    navItem(Icons.autorenew, 'SIP Planner', 6),
+                    navItem(Icons.receipt_long_outlined, 'Bonds', 7),
+                    navItem(Icons.bar_chart, 'ETFs', 8),
+                    navItem(Icons.currency_bitcoin, 'Crypto', 9),
+                    navItem(Icons.rocket_launch_outlined, 'IPOs', 10),
+                    navItem(Icons.pie_chart_outline, 'Portfolio', 3),
+                    navItem(Icons.newspaper_outlined, 'Market News', 11),
+                    navItem(Icons.auto_awesome_outlined, 'AI Research', 1),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'TOOLS',
+                      style: TextStyle(
+                        color: kMuted,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.1,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    navItem(Icons.tune, 'Stock Screener', 12),
+                    navItem(Icons.compare_arrows, 'Comparisons', 13),
+                    navItem(Icons.calculate_outlined, 'Calculators', 14),
+                    navItem(Icons.star_outline, 'Watchlist', 2),
+                    navItem(Icons.notifications_none, 'Alerts', 15),
+                    navItem(Icons.settings_outlined, 'Settings', 4),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.all(13),
+            decoration: BoxDecoration(
+              color: kGreen,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.auto_awesome, color: Colors.white),
+                const SizedBox(height: 8),
+                const Text(
+                  'InvestEdge Pro',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'AI Future Outlook and advanced research.',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: .75),
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget navItem(IconData icon, String label, int destination) {
+    final active = tab == destination && (destination != 1 || selected == null);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 3),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(10),
+        clipBehavior: Clip.antiAlias,
+        child: ListTile(
+          dense: true,
+          visualDensity: const VisualDensity(vertical: -2),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+          tileColor: active ? kMint : Colors.transparent,
+          leading: Icon(icon, size: 19, color: active ? kGreen : kMuted),
+          title: Text(
+            label,
+            style: TextStyle(
+              color: active ? kGreen : kText,
+              fontSize: 13,
+              fontWeight: active ? FontWeight.w800 : FontWeight.w500,
+            ),
+          ),
+          onTap: () => selectTab(destination),
+        ),
+      ),
+    );
+  }
+
+  Widget mobileNav() {
+    return NavigationBar(
+      backgroundColor: Colors.white,
+      selectedIndex: tab > 4 ? 1 : tab,
+      onDestinationSelected: selectTab,
+      destinations: const [
+        NavigationDestination(
+          icon: Icon(Icons.dashboard_outlined),
+          selectedIcon: Icon(Icons.dashboard),
+          label: 'Home',
+        ),
+        NavigationDestination(
+          icon: Icon(Icons.auto_graph_outlined),
+          selectedIcon: Icon(Icons.auto_graph),
+          label: 'Research',
+        ),
+        NavigationDestination(
+          icon: Icon(Icons.star_border),
+          selectedIcon: Icon(Icons.star),
+          label: 'Watchlist',
+        ),
+        NavigationDestination(
+          icon: Icon(Icons.pie_chart_outline),
+          selectedIcon: Icon(Icons.pie_chart),
+          label: 'Portfolio',
+        ),
+        NavigationDestination(
+          icon: Icon(Icons.person_outline),
+          selectedIcon: Icon(Icons.person),
+          label: 'Account',
+        ),
+      ],
+    );
+  }
+
+  Widget featurePage(
+    String title,
+    String subtitle,
+    IconData icon,
+    String message,
+  ) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 40),
+      children: [
+        Row(
+          children: [
+            Icon(icon, size: 30, color: kGreen),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 25,
+                      fontWeight: FontWeight.w900,
+                      color: kText,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(fontSize: 13, color: kMuted),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 22),
+        Container(
+          padding: const EdgeInsets.all(22),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: kBorder),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, size: 34, color: kGreen),
+              const SizedBox(height: 14),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 19,
+                  fontWeight: FontWeight.w800,
+                  color: kText,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                message,
+                style: const TextStyle(
+                  fontSize: 14,
+                  height: 1.5,
+                  color: kMuted,
+                ),
+              ),
+              const SizedBox(height: 14),
+              const Text(
+                'This section is a navigation-ready placeholder. Live data and feature-specific calculations must be connected and verified before use.',
+                style: TextStyle(fontSize: 12, height: 1.5, color: kMuted),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 18),
+        OutlinedButton.icon(
+          onPressed: () => selectTab(0),
+          icon: const Icon(Icons.dashboard_outlined),
+          label: const Text('Back to Dashboard'),
+        ),
+      ],
+    );
+  }
+
+  Widget bodyForTab() {
+    if (tab == 0) return dashboard();
+    if (tab == 1)
+      return selected == null ? research() : detail(getStock(selected!));
+    if (tab == 2) return watch();
+    if (tab == 3) return portfolioPage();
+    if (tab == 4) return account();
+    if (tab == 5)
+      return featurePage(
+        'Mutual Funds',
+        'Fund research and comparison',
+        Icons.account_balance,
+        'Explore mutual fund categories and compare funds. Fund-specific data is not connected in this screen yet.',
+      );
+    if (tab == 6)
+      return featurePage(
+        'SIP Planner',
+        'Plan recurring investments',
+        Icons.autorenew,
+        'Plan a systematic investment using your intended monthly amount, duration and assumed return. A verified SIP calculator is not connected yet.',
+      );
+    if (tab == 7)
+      return featurePage(
+        'Bonds',
+        'Fixed-income research',
+        Icons.receipt_long_outlined,
+        'Review bond types, maturity and credit-risk concepts. Verified bond listings and yields are not connected yet.',
+      );
+    if (tab == 8)
+      return featurePage(
+        'ETFs',
+        'Exchange-traded funds',
+        Icons.bar_chart,
+        'Explore ETF categories and comparison criteria. Verified ETF prices and fund data are not connected yet.',
+      );
+    if (tab == 9)
+      return featurePage(
+        'Crypto',
+        'Digital-asset overview',
+        Icons.currency_bitcoin,
+        'Review digital-asset research concepts. A verified cryptocurrency price feed is not connected yet.',
+      );
+    if (tab == 10)
+      return featurePage(
+        'IPOs',
+        'New issue research',
+        Icons.rocket_launch_outlined,
+        'Review IPO details and offer information. Verified live IPO listings and dates are not connected yet.',
+      );
+    if (tab == 11)
+      return featurePage(
+        'Market News',
+        'News and market developments',
+        Icons.newspaper_outlined,
+        'Market news will appear here once a verified news feed is connected.',
+      );
+    if (tab == 12)
+      return featurePage(
+        'Stock Screener',
+        'Filter stocks for research',
+        Icons.tune,
+        'Stock screening filters are not connected to this section yet.',
+      );
+    if (tab == 13)
+      return featurePage(
+        'Comparisons',
+        'Compare investment options',
+        Icons.compare_arrows,
+        'Investment comparison tools are not connected to this section yet.',
+      );
+    if (tab == 14)
+      return featurePage(
+        'Calculators',
+        'Financial planning tools',
+        Icons.calculate_outlined,
+        'Financial calculators will be added here and validated before use.',
+      );
+    if (tab == 15)
+      return featurePage(
+        'Alerts',
+        'Price and watchlist alerts',
+        Icons.notifications_none,
+        'Verified price-triggered notifications are not connected to this section yet.',
+      );
+    return account();
+  }
+
+  Widget mobileContent() => bodyForTab();
+
+  // ==========================================================
+  // DASHBOARD
+  // ==========================================================
+
+  Widget dashboard() {
+    final all = market.stocks.values.toList();
+    final gainers = [...all]..sort((a, b) => b.change.compareTo(a.change));
+    final losers = [...all]..sort((a, b) => a.change.compareTo(b.change));
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 40),
+      children: [
+        _dashboardHeader(),
+        const SizedBox(height: 18),
+        marketStrip(),
+        const SizedBox(height: 18),
+        _assetGrid(),
+        const SizedBox(height: 18),
+        _mainDashboardGrid(gainers, losers),
+      ],
+    );
+  }
+
+  Widget _dashboardHeader() {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFFEAF3EE), Color(0xFFF9F8F3)],
+        ),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: kBorder),
+      ),
+      child: LayoutBuilder(
+        builder: (context, c) {
+          return Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Hi Kshitij! ðŸ‘‹',
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w900,
+                        color: kText,
+                      ),
+                    ),
+                    const SizedBox(height: 7),
+                    const Text(
+                      'Track. Analyse. Invest Smarter.',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: kGreen,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Real market data â€¢ AI insights â€¢ One workspace',
+                      style: TextStyle(color: kMuted),
+                    ),
+                    const SizedBox(height: 18),
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 8,
+                      children: [
+                        FilledButton.icon(
+                          onPressed: () => selectTab(1),
+                          icon: const Icon(Icons.auto_awesome),
+                          label: const Text('AI Research'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: () => openStock('RELIANCE'),
+                          icon: const Icon(Icons.show_chart),
+                          label: const Text('Explore Stocks'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              if (c.maxWidth > 600)
+                Container(
+                  width: 150,
+                  height: 120,
+                  decoration: BoxDecoration(
+                    color: kGreen,
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  child: const Center(
+                    child: Icon(Icons.insights, size: 68, color: Colors.white),
+                  ),
+                ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget marketStrip() {
+    return LayoutBuilder(
+      builder: (context, c) {
+        final items = [
+          _marketIndex('NIFTY 50', 'Live index data'),
+          _marketIndex('SENSEX', 'Live index data'),
+          _marketIndex('BANK NIFTY', 'Live index data'),
+        ];
+
+        return Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: items
+              .map(
+                (w) => SizedBox(
+                  width: c.maxWidth >= 900 ? (c.maxWidth - 20) / 3 : c.maxWidth,
+                  child: w,
+                ),
+              )
+              .toList(),
+        );
+      },
+    );
+  }
+
+  Widget _marketIndex(String title, String subtitle) {
+    return _card(
+      Padding(
+        padding: const EdgeInsets.all(15),
+        child: Row(
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: kMint,
+                borderRadius: BorderRadius.circular(11),
+              ),
+              child: const Icon(Icons.show_chart, color: kGreen, size: 20),
+            ),
+            const SizedBox(width: 11),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    backendOnline ? 'Connected â€¢ index feed' : subtitle,
+                    style: const TextStyle(color: kMuted, fontSize: 11),
+                  ),
+                ],
+              ),
+            ),
+            Text(
+              backendOnline ? 'LIVE' : 'â€”',
+              style: TextStyle(
+                color: backendOnline ? kGreen2 : kMuted,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _assetGrid() {
+    final assets = [
+      _asset(
+        'Stocks',
+        Icons.show_chart,
+        'Live equity research',
+        () => selectTab(1),
+      ),
+      _asset(
+        'Mutual Funds',
+        Icons.account_balance,
+        'Research ready',
+        () => selectTab(5),
+      ),
+      _asset(
+        'SIP Planner',
+        Icons.autorenew,
+        'Planning tools',
+        () => selectTab(6),
+      ),
+      _asset(
+        'Bonds',
+        Icons.receipt_long_outlined,
+        'Fixed income',
+        () => selectTab(7),
+      ),
+      _asset('ETFs', Icons.bar_chart, 'Compare ETFs', () => selectTab(8)),
+      _asset(
+        'Crypto',
+        Icons.currency_bitcoin,
+        'Digital assets',
+        () => selectTab(9),
+      ),
+      _asset(
+        'IPOs',
+        Icons.rocket_launch_outlined,
+        'New opportunities',
+        () => selectTab(10),
+      ),
+      _asset(
+        'Portfolio',
+        Icons.pie_chart_outline,
+        '${portfolio.length} holdings',
+        () => selectTab(3),
+      ),
+    ];
+
+    return LayoutBuilder(
+      builder: (context, c) {
+        final columns = c.maxWidth >= 1250
+            ? 4
+            : c.maxWidth >= 700
+            ? 3
+            : 2;
+        final width = (c.maxWidth - (columns - 1) * 12) / columns;
+        return Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: assets
+              .map((a) => SizedBox(width: width, child: a))
+              .toList(),
+        );
+      },
+    );
+  }
+
+  Widget _asset(
+    String title,
+    IconData icon,
+    String subtitle,
+    VoidCallback onTap,
+  ) {
+    return _card(
+      InkWell(
+        borderRadius: BorderRadius.circular(17),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(15),
+          child: Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: kMint,
+                  borderRadius: BorderRadius.circular(11),
+                ),
+                child: Icon(icon, color: kGreen, size: 20),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(fontWeight: FontWeight.w900),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: kMuted, fontSize: 10),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _mainDashboardGrid(List<Stock> gainers, List<Stock> losers) {
+    return LayoutBuilder(
+      builder: (context, c) {
+        final wide = c.maxWidth >= 1050;
+        if (!wide) {
+          return Column(
+            children: [
+              marketPulse(),
+              const SizedBox(height: 14),
+              futureOutlookPreview(),
+              const SizedBox(height: 14),
+              bullishBearish(),
+              const SizedBox(height: 14),
+              topMovers(gainers, losers),
+              const SizedBox(height: 14),
+              newsCard(),
+            ],
+          );
+        }
+
+        return Column(
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(flex: 2, child: marketPulse()),
+                const SizedBox(width: 14),
+                Expanded(child: futureOutlookPreview()),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: bullishBearish()),
+                const SizedBox(width: 14),
+                Expanded(flex: 2, child: topMovers(gainers, losers)),
+              ],
+            ),
+            const SizedBox(height: 14),
+            newsCard(),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget marketPulse() {
+    final values = market.stocks.values.take(18).map((s) => s.change).toList();
+    return _card(
+      Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            sectionHeader(
+              'Market Pulse',
+              'Live movement across tracked equities',
+            ),
+            const SizedBox(height: 15),
+            SizedBox(
+              height: 150,
+              child: CustomPaint(
+                painter: PulsePainter(values.isEmpty ? [0] : values),
+                child: Center(
+                  child: Text(
+                    market.isLive ? 'LIVE MARKET PULSE' : 'DEMO MARKET PULSE',
+                    style: const TextStyle(
+                      color: kMuted,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget bullishBearish() {
+    final stocks = market.stocks.values.toList();
+    final bullish = stocks.where((s) => s.change > 0).length;
+    final bearish = stocks.where((s) => s.change < 0).length;
+    final total = max(1, bullish + bearish);
+    final bullPct = bullish / total;
+
+    return _card(
+      Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            sectionHeader('Market Sentiment', 'Bullish vs bearish'),
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '${(bullPct * 100).toStringAsFixed(0)}%',
+                    style: const TextStyle(
+                      fontSize: 34,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                const Icon(Icons.trending_up, color: kGreen2, size: 32),
+              ],
+            ),
+            const SizedBox(height: 12),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: LinearProgressIndicator(
+                minHeight: 11,
+                value: bullPct,
+                backgroundColor: const Color(0xFFF0DADA),
+                valueColor: const AlwaysStoppedAnimation<Color>(kGreen2),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  '$bullish bullish',
+                  style: const TextStyle(color: kGreen2),
+                ),
+                Text('$bearish bearish', style: const TextStyle(color: kRed)),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget futureOutlookPreview() {
+    final stock = getStock('RELIANCE');
+    return _card(
+      InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: () => openStock(stock.symbol),
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'AI Future Outlook',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  proBadge(),
+                ],
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Scenario-based outlook for stocks, funds, ETFs and bonds.',
+                style: TextStyle(color: kMuted, fontSize: 12),
+              ),
+              const SizedBox(height: 15),
+              Container(
+                padding: const EdgeInsets.all(13),
+                decoration: BoxDecoration(
+                  color: kMint,
+                  borderRadius: BorderRadius.circular(13),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.auto_awesome, color: kGreen),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        '${stock.symbol} â€¢ ${outlookLabel(stock)}',
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Future forecasts will be generated by the secure backend AI layer. This client never invents a guaranteed future price.',
+                style: TextStyle(color: kMuted, fontSize: 11),
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton(
+                onPressed: () => openStock(stock.symbol),
+                child: const Text('View Outlook'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget topMovers(List<Stock> gainers, List<Stock> losers) {
+    final topG = gainers.take(5).toList();
+    final topL = losers.take(5).toList();
+
+    return _card(
+      Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            sectionHeader('Top Gainers / Losers', 'Current tracked universe'),
+            const SizedBox(height: 12),
+            LayoutBuilder(
+              builder: (context, c) {
+                final side = c.maxWidth >= 650;
+                final left = moversColumn('Top Gainers', topG, true);
+                final right = moversColumn('Top Losers', topL, false);
+                return side
+                    ? Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(child: left),
+                          const SizedBox(width: 20),
+                          Expanded(child: right),
+                        ],
+                      )
+                    : Column(
+                        children: [left, const SizedBox(height: 12), right],
+                      );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget moversColumn(String title, List<Stock> rows, bool positive) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
+        const SizedBox(height: 8),
+        ...rows.map(
+          (s) => InkWell(
+            onTap: () => openStock(s.symbol),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      s.symbol,
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                  Text(
+                    '${s.change >= 0 ? '+' : ''}${s.change.toStringAsFixed(2)}%',
+                    style: TextStyle(
+                      color: positive ? kGreen2 : kRed,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget newsCard() {
+    return _card(
+      Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            sectionHeader(
+              'Market News',
+              'Connect your news feed through the backend',
+            ),
+            const SizedBox(height: 12),
+            _newsRow(
+              Icons.newspaper_outlined,
+              'Live market news',
+              'Backend news integration slot',
+            ),
+            _newsRow(
+              Icons.auto_awesome,
+              'AI research',
+              'Summarise verified market information with the AI layer',
+            ),
+            _newsRow(
+              Icons.warning_amber_outlined,
+              'Risk alerts',
+              'Important market movements can appear here',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _newsRow(IconData icon, String title, String subtitle) {
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: CircleAvatar(
+        backgroundColor: kMint,
+        child: Icon(icon, color: kGreen, size: 19),
+      ),
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+      subtitle: Text(subtitle),
+    );
+  }
+
+  // ==========================================================
+  // RESEARCH
+  // ==========================================================
+
+  Widget research() {
+    final q = searchController.text.trim().toUpperCase();
+    final symbols =
+        (market.catalog.isNotEmpty ? market.catalog.keys : market.stocks.keys)
+            .toList()
+          ..sort();
+
+    final results = q.isEmpty
+        ? symbols.take(120).toList()
+        : symbols
+              .where((symbol) {
+                final name =
+                    market.catalog[symbol] ??
+                    market.stocks[symbol]?.name ??
+                    symbol;
+                return symbol.contains(q) || name.toUpperCase().contains(q);
+              })
+              .take(120)
+              .toList();
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 40),
+      children: [
+        pageTitle(
+          'AI Research',
+          'Search NSE equities and open a detailed research workspace.',
+        ),
+        const SizedBox(height: 18),
+        TextField(
+          controller: searchController,
+          textCapitalization: TextCapitalization.characters,
+          onChanged: (_) => setState(() {}),
+          onSubmitted: (v) {
+            if (v.trim().isNotEmpty) openStock(v);
+          },
+          decoration: InputDecoration(
+            hintText: 'Search stock symbol or company name',
+            prefixIcon: const Icon(Icons.search),
+            suffixIcon: IconButton(
+              onPressed: () {
+                if (searchController.text.trim().isNotEmpty) {
+                  openStock(searchController.text);
+                }
+              },
+              icon: const Icon(Icons.arrow_forward),
+            ),
+            filled: true,
+            fillColor: Colors.white,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(15),
+              borderSide: const BorderSide(color: kBorder),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(15),
+              borderSide: const BorderSide(color: kBorder),
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
+        Row(
+          children: [
+            statBox(
+              'NSE Equity',
+              '${market.catalog.isNotEmpty ? market.catalog.length : market.stocks.length}+',
+            ),
+            const SizedBox(width: 10),
+            statBox('Watchlist', '${watchlist.length}'),
+            const SizedBox(width: 10),
+            statBox('Data', market.isLive ? 'UPSTOX' : 'DEMO'),
+          ],
+        ),
+        const SizedBox(height: 14),
+        if (results.isEmpty)
+          empty(
+            'No NSE match found',
+            'Try RELIANCE, INFY, SBIN or another listed symbol.',
+          )
+        else
+          ...results.map((s) => stockCard(getStock(s), showStar: true)),
+      ],
+    );
+  }
+
+  Widget detail(Stock s) {
+    final fav = watchlist.contains(s.symbol);
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(24, 18, 24, 40),
+      children: [
+        Row(
+          children: [
+            IconButton(
+              onPressed: () => setState(() => selected = null),
+              icon: const Icon(Icons.arrow_back),
+            ),
+            Expanded(
+              child: Text(
+                s.symbol,
+                style: const TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+            IconButton(
+              onPressed: () => toggleWatch(s.symbol),
+              icon: Icon(fav ? Icons.star : Icons.star_border),
+            ),
+          ],
+        ),
+        Padding(
+          padding: const EdgeInsets.only(left: 8),
+          child: Text(s.name, style: const TextStyle(color: kMuted)),
+        ),
+        const SizedBox(height: 16),
+        LayoutBuilder(
+          builder: (context, c) {
+            final wide = c.maxWidth >= 900;
+            final hero = detailHero(s);
+            final outlook = futureOutlook(s);
+
+            return wide
+                ? Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(flex: 2, child: hero),
+                      const SizedBox(width: 14),
+                      Expanded(child: outlook),
+                    ],
+                  )
+                : Column(children: [hero, const SizedBox(height: 14), outlook]);
+          },
+        ),
+        const SizedBox(height: 14),
+        scoreGrid(s),
+        const SizedBox(height: 14),
+        levels(s),
+        const SizedBox(height: 14),
+        aiInsight(s),
+        const SizedBox(height: 14),
+        FilledButton.icon(
+          onPressed: () => addHolding(s),
+          icon: const Icon(Icons.add_chart),
+          label: const Text('Add Holding'),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          'Updated ${time(s.updated)} â€¢ ${market.isLive ? 'UPSTOX LIVE' : 'DEMO ENGINE'}',
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: Colors.black45, fontSize: 12),
+        ),
+      ],
+    );
+  }
+
+  Widget detailHero(Stock s) {
+    return _card(
+      Padding(
+        padding: const EdgeInsets.all(22),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Market Snapshot',
+              style: TextStyle(color: kMuted, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'â‚¹${s.price.toStringAsFixed(2)}',
+              style: const TextStyle(fontSize: 38, fontWeight: FontWeight.w900),
+            ),
+            Text(
+              '${s.change >= 0 ? '+' : ''}${s.change.toStringAsFixed(2)}%',
+              style: TextStyle(
+                color: s.change >= 0 ? kGreen2 : kRed,
+                fontWeight: FontWeight.w900,
+                fontSize: 16,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                signalChip(s.signal, large: true),
+                const SizedBox(width: 10),
+                Text(
+                  'Confidence ${s.confidence.toStringAsFixed(0)}%',
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'This is research information, not a guaranteed return or personalised investment recommendation.',
+              style: TextStyle(color: kMuted, fontSize: 11),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget futureOutlook(Stock s) {
+    return _card(
+      Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'AI Future Outlook',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+                  ),
+                ),
+                proBadge(),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              s.symbol,
+              style: const TextStyle(
+                color: kMuted,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: kMint,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.auto_awesome, color: kGreen),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      outlookLabel(s),
+                      style: const TextStyle(
+                        color: kGreen,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            _outlookRow('Technical', s.technical),
+            _outlookRow('Fundamental', s.fundamental),
+            _outlookRow('Momentum', s.momentum),
+            _outlookRow('Risk quality', s.risk),
+            const SizedBox(height: 12),
+            const Text(
+              'Production AI prediction: the secure backend will combine market, fundamental, sentiment and event data before returning a forecast. No future price is fabricated by the Flutter client.',
+              style: TextStyle(color: kMuted, fontSize: 11, height: 1.35),
+            ),
+            const SizedBox(height: 12),
+            if (entitlement.isPro)
+              FilledButton(
+                onPressed: () {},
+                child: const Text('Run Full Outlook'),
+              )
+            else
+              OutlinedButton.icon(
+                onPressed: showProDialog,
+                icon: const Icon(Icons.lock_outline, size: 17),
+                label: const Text('Unlock Full AI Outlook'),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _outlookRow(String label, double value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(label, style: const TextStyle(color: kMuted)),
+          ),
+          SizedBox(
+            width: 90,
+            child: LinearProgressIndicator(
+              value: value.clamp(0, 100) / 100,
+              minHeight: 6,
+              backgroundColor: const Color(0xFFE4E8E5),
+              valueColor: const AlwaysStoppedAnimation<Color>(kGreen2),
+            ),
+          ),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 35,
+            child: Text(
+              value.toStringAsFixed(0),
+              textAlign: TextAlign.right,
+              style: const TextStyle(fontWeight: FontWeight.w800),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String outlookLabel(Stock s) {
+    if (s.technical >= 68 && s.momentum >= 60) return 'Positive setup';
+    if (s.technical <= 42 && s.momentum <= 45) return 'Cautious setup';
+    return 'Mixed / watch setup';
+  }
+
+  Widget aiInsight(Stock s) {
+    return _card(
+      Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            sectionHeader(
+              'AI Market Insight',
+              'Current evidence behind the signal',
+            ),
+            const SizedBox(height: 10),
+            Text(insight(s), style: const TextStyle(height: 1.45)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String insight(Stock s) {
+    final bias = s.signal == Signal.buy
+        ? 'bullish'
+        : s.signal == Signal.sell
+        ? 'bearish'
+        : 'mixed';
+    final rsiText = s.rsi < 30
+        ? 'RSI is oversold'
+        : s.rsi > 70
+        ? 'RSI is overbought'
+        : 'RSI is in a normal zone';
+
+    return 'The current setup is $bias. $rsiText. '
+        'Technical ${s.technical.toStringAsFixed(0)}/100, '
+        'fundamental ${s.fundamental.toStringAsFixed(0)}/100, '
+        'momentum ${s.momentum.toStringAsFixed(0)}/100 and '
+        'risk quality ${s.risk.toStringAsFixed(0)}/100. '
+        'A production AI outlook will use verified backend data and explain the factors behind each scenario.';
+  }
+
+  Widget scoreGrid(Stock s) {
+    return LayoutBuilder(
+      builder: (context, c) {
+        final columns = c.maxWidth >= 900 ? 4 : 2;
+        return GridView.count(
+          crossAxisCount: columns,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisSpacing: 10,
+          mainAxisSpacing: 10,
+          childAspectRatio: 2.6,
+          children: [
+            metric('Technical', s.technical),
+            metric('Fundamental', s.fundamental),
+            metric('Momentum', s.momentum),
+            metric('Risk', s.risk),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget metric(String label, double value) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: kBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  label,
+                  style: const TextStyle(color: kMuted, fontSize: 12),
+                ),
+              ),
+              Text(
+                value.toStringAsFixed(1),
+                style: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 18,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: LinearProgressIndicator(
+              value: value.clamp(0, 100) / 100,
+              minHeight: 7,
+              backgroundColor: const Color(0xFFE1E7E3),
+              valueColor: const AlwaysStoppedAnimation<Color>(kGreen2),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget levels(Stock s) {
+    final buy = s.signal == Signal.buy;
+    final sell = s.signal == Signal.sell;
+    final entryLow = buy
+        ? s.price * .995
+        : sell
+        ? s.price * .985
+        : s.price * .99;
+    final entryHigh = buy
+        ? s.price * 1.005
+        : sell
+        ? s.price * 1.015
+        : s.price * 1.01;
+    final target1 = buy
+        ? s.price * 1.04
+        : sell
+        ? s.price * .96
+        : s.price * 1.02;
+    final target2 = buy
+        ? s.price * 1.08
+        : sell
+        ? s.price * .92
+        : s.price * 1.04;
+    final stop = buy
+        ? s.price * .965
+        : sell
+        ? s.price * 1.035
+        : s.price * .97;
+
+    return _card(
+      Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Trade Levels',
+                    style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
+                  ),
+                ),
+                signalChip(s.signal),
+              ],
+            ),
+            const SizedBox(height: 12),
+            level(
+              'Entry Zone',
+              'â‚¹${entryLow.toStringAsFixed(2)} â€“ â‚¹${entryHigh.toStringAsFixed(2)}',
+            ),
+            level('Target 1', 'â‚¹${target1.toStringAsFixed(2)}'),
+            level('Target 2', 'â‚¹${target2.toStringAsFixed(2)}'),
+            level('Stop Loss', 'â‚¹${stop.toStringAsFixed(2)}'),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget level(String a, String b) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 6),
+    child: Row(
+      children: [
+        Expanded(
+          child: Text(a, style: const TextStyle(color: kMuted)),
+        ),
+        Text(b, style: const TextStyle(fontWeight: FontWeight.w800)),
+      ],
+    ),
+  );
+
+  // ==========================================================
+  // WATCHLIST
+  // ==========================================================
+
+  Widget watch() {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 40),
+      children: [
+        pageTitle(
+          'Watchlist',
+          '${watchlist.length} symbols saved locally on this device.',
+        ),
+        const SizedBox(height: 16),
+        if (watchlist.isEmpty)
+          empty(
+            'No stocks yet',
+            'Search any NSE symbol and tap the star to add it.',
+          )
+        else
+          ...watchlist.map((s) => stockCard(getStock(s), showStar: true)),
+      ],
+    );
+  }
+
+  // ==========================================================
+  // PORTFOLIO
+  // ==========================================================
+
+  Widget portfolioPage() {
+    double total = 0;
+    double invested = 0;
+
+    for (final h in portfolio.values) {
+      final s = getStock(h.symbol);
+      total += h.qty * s.price;
+      invested += h.qty * h.avgPrice;
+    }
+
+    final pnl = total - invested;
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 40),
+      children: [
+        pageTitle(
+          'Portfolio',
+          'Track positions locally. Broker execution is intentionally not connected here.',
+        ),
+        const SizedBox(height: 16),
+        _card(
+          Padding(
+            padding: const EdgeInsets.all(22),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Portfolio Value',
+                        style: TextStyle(color: kMuted),
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        'â‚¹${total.toStringAsFixed(2)}',
+                        style: const TextStyle(
+                          fontSize: 32,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    const Text('P&L', style: TextStyle(color: kMuted)),
+                    const SizedBox(height: 5),
+                    Text(
+                      '${pnl >= 0 ? '+' : ''}â‚¹${pnl.toStringAsFixed(2)}',
+                      style: TextStyle(
+                        color: pnl >= 0 ? kGreen2 : kRed,
+                        fontSize: 19,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
+        ...portfolio.values.map(holdingCard),
+        if (portfolio.isEmpty)
+          empty(
+            'Portfolio is empty',
+            'Open a stock and use Add Holding to create a position.',
+          ),
+      ],
+    );
+  }
+
+  Widget holdingCard(Holding h) {
+    final s = getStock(h.symbol);
+    final value = h.qty * s.price;
+    final pnl = (s.price - h.avgPrice) * h.qty;
+
+    return _card(
+      ListTile(
+        onTap: () => openStock(h.symbol),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        title: Text(
+          h.symbol,
+          style: const TextStyle(fontWeight: FontWeight.w900),
+        ),
+        subtitle: Text(
+          '${h.qty} qty â€¢ avg â‚¹${h.avgPrice.toStringAsFixed(2)}',
+        ),
+        trailing: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(
+              'â‚¹${value.toStringAsFixed(2)}',
+              style: const TextStyle(fontWeight: FontWeight.w800),
+            ),
+            Text(
+              '${pnl >= 0 ? '+' : ''}â‚¹${pnl.toStringAsFixed(2)}',
+              style: TextStyle(color: pnl >= 0 ? kGreen2 : kRed),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ==========================================================
+  // ACCOUNT
+  // ==========================================================
+
+  Widget account() {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 40),
+      children: [
+        pageTitle(
+          'Account & Security',
+          'Security, plan and production readiness.',
+        ),
+        const SizedBox(height: 16),
+        _card(
+          ListTile(
+            leading: const CircleAvatar(
+              backgroundColor: kMint,
+              child: Icon(Icons.person, color: kGreen),
+            ),
+            title: const Text(
+              'Kshitij',
+              style: TextStyle(fontWeight: FontWeight.w900),
+            ),
+            subtitle: Text(
+              entitlement.isPro ? 'InvestEdge Pro' : 'InvestEdge Free',
+            ),
+            trailing: proBadge(),
+          ),
+        ),
+        const SizedBox(height: 10),
+        actionCard(
+          Icons.lock,
+          'Lock app',
+          'Instantly lock the current session.',
+          () => setState(() => locked = true),
+        ),
+        actionCard(
+          Icons.auto_awesome,
+          'AI Future Outlook',
+          'Premium architecture for scenario-based AI market research.',
+          showProDialog,
+        ),
+        actionCard(
+          Icons.cloud_done,
+          'Live backend',
+          backendOnline
+              ? 'Connected. Flutter is receiving backend market state.'
+              : 'Not connected. The app is using its local demo engine.',
+          () {},
+        ),
+        actionCard(
+          Icons.security,
+          'Secret protection',
+          'Upstox and AI credentials belong on the secure backend, never in the Flutter client.',
+          () {},
+        ),
+        actionCard(
+          Icons.android,
+          'Android release',
+          'Signed Android build architecture is already configured.',
+          () {},
+        ),
+        actionCard(
+          Icons.info_outline,
+          'About InvestEdge',
+          'Track. Analyse. Invest Smarter.',
+          () {},
+        ),
+      ],
+    );
+  }
+
+  // ==========================================================
+  // COMMON UI
+  // ==========================================================
+
+  Widget stockCard(Stock s, {bool compact = false, bool showStar = false}) {
+    final fav = watchlist.contains(s.symbol);
+
+    return _card(
+      InkWell(
+        borderRadius: BorderRadius.circular(17),
+        onTap: () => openStock(s.symbol),
+        child: Padding(
+          padding: EdgeInsets.all(compact ? 15 : 13),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: kMint,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  s.symbol.substring(0, min(2, s.symbol.length)),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w900,
+                    color: kGreen,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      s.symbol,
+                      style: const TextStyle(fontWeight: FontWeight.w900),
+                    ),
+                    Text(
+                      s.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12, color: kMuted),
+                    ),
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    'â‚¹${s.price.toStringAsFixed(2)}',
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  Text(
+                    '${s.change >= 0 ? '+' : ''}${s.change.toStringAsFixed(2)}%',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: s.change >= 0 ? kGreen2 : kRed,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(width: 10),
+              signalChip(s.signal),
+              if (showStar)
+                IconButton(
+                  onPressed: () => toggleWatch(s.symbol),
+                  icon: Icon(
+                    fav ? Icons.star : Icons.star_border,
+                    color: fav ? const Color(0xFFFFB300) : kMuted,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget signalChip(Signal signal, {bool large = false}) {
+    final label = signal == Signal.buy
+        ? 'BUY'
+        : signal == Signal.sell
+        ? 'SELL'
+        : 'HOLD';
+    final color = signal == Signal.buy
+        ? kGreen2
+        : signal == Signal.sell
+        ? kRed
+        : kAmber;
+
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: large ? 14 : 9,
+        vertical: large ? 8 : 5,
+      ),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: .11),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontWeight: FontWeight.w900,
+          fontSize: large ? 15 : 10,
+        ),
+      ),
+    );
+  }
+
+  Widget actionCard(
+    IconData icon,
+    String title,
+    String body,
+    VoidCallback onTap,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: _card(
+        ListTile(
+          contentPadding: const EdgeInsets.all(14),
+          leading: CircleAvatar(
+            backgroundColor: kMint,
+            child: Icon(icon, color: kGreen),
+          ),
+          title: Text(
+            title,
+            style: const TextStyle(fontWeight: FontWeight.w900),
+          ),
+          subtitle: Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(body),
+          ),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: onTap,
+        ),
+      ),
+    );
+  }
+
+  Widget sectionHeader(String title, String subtitle) {
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                subtitle,
+                style: const TextStyle(color: kMuted, fontSize: 11),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget pageTitle(String title, String subtitle) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900),
+        ),
+        const SizedBox(height: 5),
+        Text(subtitle, style: const TextStyle(color: kMuted)),
+      ],
+    );
+  }
+
+  Widget statBox(String title, String value) {
+    return Expanded(
+      child: _card(
+        Padding(
+          padding: const EdgeInsets.all(13),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: const TextStyle(color: kMuted, fontSize: 11)),
+              const SizedBox(height: 3),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _card(Widget child) {
+    return Card(
+      margin: EdgeInsets.zero,
+      elevation: 0,
+      color: kCard,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: const BorderSide(color: kBorder),
+      ),
+      child: child,
+    );
+  }
+
+  Widget logo({double size = 38}) {
+    return Container(
+      width: size,
+      height: size,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: kGreen,
+        borderRadius: BorderRadius.circular(size * .25),
+      ),
+      child: Text(
+        'IE',
+        style: TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.w900,
+          fontSize: size * .35,
+        ),
+      ),
+    );
+  }
+
+  Widget liveBadge() {
+    final live = backendOnline && market.isLive;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: live ? kMint : const Color(0xFFFFF2DD),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.circle, size: 8, color: live ? Colors.green : kAmber),
+          const SizedBox(width: 6),
+          Text(
+            live ? 'LIVE' : 'DEMO',
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w900,
+              color: live ? kGreen2 : kAmber,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget proBadge() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEDE7D6),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: const Text(
+        'PRO',
+        style: TextStyle(
+          color: Color(0xFF8B681D),
+          fontSize: 9,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+    );
+  }
+
+  Widget empty(String title, String body) {
+    return _card(
+      Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          children: [
+            const Icon(Icons.inbox_outlined, size: 44, color: Colors.black38),
+            const SizedBox(height: 9),
+            Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
+            const SizedBox(height: 5),
+            Text(
+              body,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: kMuted),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ==========================================================
+  // LOCK / PRO / HOLDING
+  // ==========================================================
+
+  Widget lockScreen() {
+    return Scaffold(
+      backgroundColor: kGreen,
+      body: Center(
+        child: Card(
+          margin: const EdgeInsets.all(28),
+          child: Padding(
+            padding: const EdgeInsets.all(30),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.lock, size: 52, color: kGreen),
+                const SizedBox(height: 14),
+                const Text(
+                  'InvestEdge Locked',
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 8),
+                const Text('Unlock this session to continue.'),
+                const SizedBox(height: 18),
+                FilledButton.icon(
+                  onPressed: () => setState(() => locked = false),
+                  icon: const Icon(Icons.lock_open),
+                  label: const Text('Unlock Session'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void showProDialog() {
+    showDialog<void>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Row(
+          children: [
+            const Expanded(
+              child: Text(
+                'InvestEdge Pro',
+                style: TextStyle(fontWeight: FontWeight.w900),
+              ),
+            ),
+            proBadge(),
+          ],
+        ),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Premium features planned for launch:'),
+            SizedBox(height: 10),
+            Text('â€¢ AI Future Outlook'),
+            Text('â€¢ Bull / Base / Bear scenarios'),
+            Text('â€¢ Advanced research'),
+            Text('â€¢ Advanced portfolio intelligence'),
+            Text('â€¢ Premium alerts and reports'),
+            SizedBox(height: 12),
+            Text(
+              'Payments will be connected later through the secure backend and official app-store billing.',
+              style: TextStyle(color: kMuted, fontSize: 11),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void addHolding(Stock s) {
+    final qty = TextEditingController(text: '1');
+    final avg = TextEditingController(text: s.price.toStringAsFixed(2));
+
+    showDialog<void>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text('Add ${s.symbol}'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: qty,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: 'Quantity'),
+            ),
+            TextField(
+              controller: avg,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: const InputDecoration(labelText: 'Average price'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final q = double.tryParse(qty.text) ?? 0;
+              final p = double.tryParse(avg.text) ?? s.price;
+              if (q > 0) {
+                setState(() {
+                  portfolio[s.symbol] = Holding(s.symbol, q, p);
+                });
+                _savePortfolio();
+              }
+              Navigator.pop(context);
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String time(DateTime d) =>
+      '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}:${d.second.toString().padLeft(2, '0')}';
+}
+
+class PulsePainter extends CustomPainter {
+  final List<double> values;
+  PulsePainter(this.values);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final line = Paint()
+      ..color = kGreen2
+      ..strokeWidth = 2.4
+      ..style = PaintingStyle.stroke;
+
+    final grid = Paint()
+      ..color = kBorder
+      ..strokeWidth = 1;
+
+    for (int i = 1; i < 4; i++) {
+      final y = size.height * i / 4;
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), grid);
+    }
+
+    if (values.length < 2) return;
+
+    final minV = values.reduce(min);
+    final maxV = values.reduce(max);
+    final range = max(0.01, maxV - minV);
+    final path = Path();
+
+    for (int i = 0; i < values.length; i++) {
+      final x = size.width * i / (values.length - 1);
+      final normalized = (values[i] - minV) / range;
+      final y =
+          size.height - normalized * (size.height * .75) - size.height * .1;
+      if (i == 0) {
+        path.moveTo(x, y);
+      } else {
+        path.lineTo(x, y);
+      }
+    }
+
+    canvas.drawPath(path, line);
+  }
+
+  @override
+  bool shouldRepaint(covariant PulsePainter oldDelegate) => true;
+}

@@ -1,0 +1,7 @@
+EXTRACTION PATH (copy exactly):
+C:\AI Projects\InvestEdge_Packages\InvestEdge_Combined_Workspace
+
+Extract the ZIP into that folder. It creates a separate folder named:
+InvestEdge_Website_Upgrade
+
+This package is intentionally isolated so your current app/backend files are preserved.

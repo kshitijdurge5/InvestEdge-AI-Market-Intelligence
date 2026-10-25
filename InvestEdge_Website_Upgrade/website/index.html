@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#f6f4ee">
+<meta name="description" content="InvestEdge — AI-powered market intelligence, portfolio insights and investment research.">
+<title>InvestEdge | AI Market Intelligence</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar">
+    <a class="brand" href="#"><span class="brand-mark">I</span><span>Invest<span class="brand-accent">Edge</span><small>AI MARKET INTELLIGENCE</small></span></a>
+    <div class="nav-label">WORKSPACE</div>
+    <nav id="nav">
+      <button class="nav-item active" data-view="overview"><span>◫</span> Overview</button>
+      <button class="nav-item" data-view="stocks"><span>↗</span> Stocks</button>
+      <button class="nav-item" data-view="funds"><span>◉</span> Mutual funds</button>
+      <button class="nav-item" data-view="sip"><span>◷</span> SIP planner</button>
+      <button class="nav-item" data-view="bonds"><span>▤</span> Bonds</button>
+      <button class="nav-item" data-view="etfs"><span>◈</span> ETFs</button>
+      <button class="nav-item" data-view="crypto"><span>₿</span> Crypto</button>
+      <button class="nav-item" data-view="ipos"><span>✦</span> IPOs</button>
+      <button class="nav-item" data-view="portfolio"><span>◴</span> Portfolio</button>
+      <button class="nav-item" data-view="news"><span>≋</span> Market news</button>
+      <button class="nav-item" data-view="research"><span>⌕</span> AI research</button>
+    </nav>
+    <div class="sidebar-bottom"><div class="status-dot"></div><div><strong>Demo environment</strong><small>Sample data · Not live prices</small></div></div>
+  </aside>
+  <main class="main">
+    <header class="topbar">
+      <button class="mobile-menu" id="menuBtn" aria-label="Open menu">☰</button>
+      <div><div class="eyebrow">THURSDAY, OCTOBER 9, 2026</div><h1 id="pageTitle">Market overview</h1></div>
+      <div class="top-actions"><span class="demo-pill"><i></i> DEMO DATA</span><button class="avatar" title="Demo profile">KD</button></div>
+    </header>
+    <section class="welcome-row">
+      <div><div class="eyebrow">YOUR FINANCIAL COMMAND CENTRE</div><h2>See the market with <em>clarity.</em></h2><p>Research smarter. Understand risk. Make more informed decisions.</p></div>
+      <div class="date-chip">◷ &nbsp; Market snapshot <b>· Demo</b></div>
+    </section>
+    <section class="market-strip" aria-label="Market indices">
+      <article class="index-card"><div class="index-head"><span>NIFTY 50</span><span class="mini-icon">N</span></div><strong>24,695.35</strong><div class="index-change positive">▲ 0.62% <small>+152.40</small></div><div class="sparkline up">▁▂▂▃▂▄▃▅▄▆▅▇</div></article>
+      <article class="index-card"><div class="index-head"><span>SENSEX</span><span class="mini-icon">S</span></div><strong>80,914.82</strong><div class="index-change positive">▲ 0.48% <small>+386.70</small></div><div class="sparkline up">▁▂▁▃▄▃▅▄▆▅▆▇</div></article>
+      <article class="index-card"><div class="index-head"><span>BANK NIFTY</span><span class="mini-icon">B</span></div><strong>55,208.40</strong><div class="index-change negative">▼ 0.18% <small>−99.20</small></div><div class="sparkline down">▇▆▇▅▆▄▅▃▄▂▃▂</div></article>
+      <article class="index-card sentiment-card"><div class="index-head"><span>MARKET SENTIMENT</span><span class="pulse">●</span></div><strong class="sentiment-value">Cautiously bullish</strong><div class="sentiment-bar"><span></span></div><div class="muted-line">Illustrative sentiment score <b>64/100</b></div></article>
+    </section>
+    <section class="content-grid">
+      <article class="panel chart-panel">
+        <div class="panel-head"><div><div class="eyebrow">MARKET MOVEMENT</div><h3>NIFTY 50 performance</h3></div><div class="range-tabs"><button class="selected" data-range="1D">1D</button><button data-range="1W">1W</button><button data-range="1M">1M</button><button data-range="1Y">1Y</button></div></div>
+        <div class="chart-summary"><strong id="chartValue">24,695.35</strong><span class="positive" id="chartChange">▲ 0.62%</span></div>
+        <div class="chart-wrap"><div class="chart-y"><span>24,800</span><span>24,700</span><span>24,600</span><span>24,500</span></div>
+          <svg class="chart" viewBox="0 0 700 230" preserveAspectRatio="none" role="img" aria-label="Illustrative NIFTY chart">
+            <defs><linearGradient id="area" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#21866b" stop-opacity=".22"/><stop offset="100%" stop-color="#21866b" stop-opacity="0"/></linearGradient></defs>
+            <g class="gridlines"><path d="M0 25H700 M0 80H700 M0 135H700 M0 190H700"/></g>
+            <path id="chartArea" class="area" d="M0 175 L40 162 L80 170 L120 130 L160 143 L200 110 L240 122 L280 84 L320 100 L360 66 L400 91 L440 50 L480 65 L520 44 L560 57 L600 28 L640 40 L700 17 L700 220 L0 220 Z"/>
+            <path id="chartLine" class="line" d="M0 175 L40 162 L80 170 L120 130 L160 143 L200 110 L240 122 L280 84 L320 100 L360 66 L400 91 L440 50 L480 65 L520 44 L560 57 L600 28 L640 40 L700 17"/>
+          </svg>
+        </div><div class="chart-foot"><span>09:15 AM</span><span>12:00 PM</span><span>03:30 PM</span></div>
+        <p class="disclaimer">Illustrative interface values only. This demo is not connected to a live market-data provider.</p>
+      </article>
+      <article class="panel movers-panel"><div class="panel-head"><div><div class="eyebrow">QUICK SCAN</div><h3>Top movers</h3></div><button class="text-btn" data-view-link="stocks">View all ↗</button></div>
+        <div class="mover-tabs"><button class="selected" data-movers="gainers">Gainers</button><button data-movers="losers">Losers</button></div>
+        <div id="moversList"></div>
+      </article>
+    </section>
+    <section class="bottom-grid">
+      <article class="panel allocation-panel"><div class="panel-head"><div><div class="eyebrow">PORTFOLIO SNAPSHOT</div><h3>Illustrative allocation</h3></div><button class="text-btn" data-view-link="portfolio">Explore ↗</button></div>
+        <div class="allocation-content"><div class="donut"><div><strong>₹5.8L</strong><small>Sample value</small></div></div><div class="legend"><div><i class="dot dot-equity"></i><span>Equity</span><b>48%</b></div><div><i class="dot dot-funds"></i><span>Mutual funds</span><b>27%</b></div><div><i class="dot dot-debt"></i><span>Debt</span><b>15%</b></div><div><i class="dot dot-cash"></i><span>Cash & other</span><b>10%</b></div></div></div><p class="disclaimer">Example allocation, not a recommendation.</p>
+      </article>
+      <article class="panel insights-panel"><div class="panel-head"><div><div class="eyebrow">AI RESEARCH LAB</div><h3>Research assistant</h3></div><span class="ai-badge">✦ AI</span></div><p class="research-copy">Explore a company, compare market themes, or learn about investment risks.</p><label for="researchInput" class="field-label">What would you like to research?</label><div class="research-input"><input id="researchInput" placeholder="e.g. Explain index funds in simple words"><button id="researchBtn" aria-label="Run research">→</button></div><div class="prompt-chips"><button data-prompt="Explain the difference between stocks and mutual funds">Stocks vs funds</button><button data-prompt="What risks should I understand before investing?">Investment risks</button></div><div id="researchResult" class="research-result" hidden></div><p class="disclaimer">Demo responses are educational and not personalised financial advice.</p></article>
+    </section>
+    <footer><span>© 2026 InvestEdge · Product preview</span><span><a href="#privacy">Privacy</a><a href="#disclaimer">Risk disclosure</a><a href="#contact">Contact</a></span></footer>
+  </main>
+</div>
+<div class="toast" id="toast" role="status"></div>
+<script src="app.js"></script>
+</body></html>

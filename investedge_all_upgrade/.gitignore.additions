@@ -1,0 +1,5 @@
+backend/.env
+backend/.venv/
+backend/data/*.db
+investedge_all_upgrade_backup*.zip
+.investedge_backups/
