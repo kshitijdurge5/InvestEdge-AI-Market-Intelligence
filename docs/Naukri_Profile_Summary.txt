@@ -1,0 +1,11 @@
+﻿PROFILE SUMMARY — AI / PYTHON DEVELOPER
+
+Aspiring AI Engineer building practical software projects involving Python, Flutter/Dart, FastAPI, WebSockets, SQLite, and AI/LLM integration. Developing InvestEdge, a personal market-intelligence portfolio project, to practise backend APIs, application development, data communication, and AI-enabled workflows.
+
+PROJECT: InvestEdge — AI Market Intelligence
+GitHub: https://github.com/kshitijdurge5/InvestEdge-AI-Market-Intelligence
+
+Skills to list only where you can explain and demonstrate them:
+Python | FastAPI | REST APIs | Flutter | Dart | SQLite | WebSockets | Git | GitHub | Generative AI | LLM Applications
+
+Project status: Personal learning and portfolio project under development.

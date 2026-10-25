@@ -118,3 +118,21 @@ InvestEdge is a software development and learning project. It is not a broker, d
 **Built as part of my journey into AI Engineering.**
 
 </div>
+
+## Screenshots
+
+Screenshots of the running application will be added here after review.
+See [`docs/screenshots`](docs/screenshots/) for the screenshot folder.
+
+## Engineering Focus
+
+- Python backend development
+- Flutter and Dart application development
+- FastAPI and API integration
+- WebSocket communication
+- SQLite persistence
+- AI / LLM application integration
+- Git, GitHub, documentation, and secure configuration
+
+The project is under development. Technology names do not imply that every integration is complete or production-ready.
+

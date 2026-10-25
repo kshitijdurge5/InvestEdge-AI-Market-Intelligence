@@ -1,0 +1,16 @@
+﻿PROJECT: InvestEdge — AI Market Intelligence
+
+GitHub: https://github.com/kshitijdurge5/InvestEdge-AI-Market-Intelligence
+
+I am developing InvestEdge, a personal portfolio project exploring AI-assisted market research and financial information.
+
+Technologies explored: Python, Flutter/Dart, FastAPI, WebSockets, SQLite, and AI/LLM integration.
+
+Project focus:
+• Building a mobile application interface.
+• Developing Python backend services and API workflows.
+• Exploring real-time communication and data persistence.
+• Integrating AI capabilities into a market-information workflow.
+• Practising software engineering, documentation, and secure configuration.
+
+This is an ongoing personal project. Features and live-market connectivity should be assessed from the current code and setup.

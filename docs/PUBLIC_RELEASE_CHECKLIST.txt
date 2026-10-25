@@ -1,0 +1,6 @@
+﻿Before making this repository public:
+1. Review all files and the complete Git history for API keys and secrets.
+2. Check .env files, signing keys, local databases, logs, backups, and personal data.
+3. Confirm that screenshots contain no credentials or personal information.
+4. Verify the application features described in the README.
+5. Rotate any credential that may already have been exposed.
