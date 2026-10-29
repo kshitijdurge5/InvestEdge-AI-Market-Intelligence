@@ -1,0 +1,17 @@
+﻿python.exe : test_empty_input_is_rejected (test_core.AnalyzeTests.test_empty_input_is_rejected) ... ok
+At line:42 char:23
++ ...      $TestOutput = & $Py.Source -m unittest discover -s tests -v 2>&1
++                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (test_empty_inpu...ejected) ... ok:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+test_malformed_provider_response_is_rejected (test_core.AnalyzeTests.test_malformed_provider_response_is_rejected) ... 
+ok
+test_missing_api_key_is_rejected (test_core.AnalyzeTests.test_missing_api_key_is_rejected) ... ok
+test_oversized_input_is_rejected (test_core.AnalyzeTests.test_oversized_input_is_rejected) ... ok
+test_successful_model_response (test_core.AnalyzeTests.test_successful_model_response) ... ok
+
+----------------------------------------------------------------------
+Ran 5 tests in 0.008s
+
+OK
